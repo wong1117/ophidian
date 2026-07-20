@@ -1,0 +1,71 @@
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gofmt
+    - goimports
+    - misspell
+    - unconvert
+    - prealloc
+    - bodyclose
+    - goconst
+    - gocritic
+    - gocyclo
+    - gosec
+    - nilerr
+    - predeclared
+    - thelper
+    - tparallel
+    - whitespace
+    - asciicheck
+    - bidichk
+    - durationcheck
+    - errorlint
+    - exhaustive
+    - makezero
+    - noctx
+    - nolintlint
+    - reassign
+
+linters-settings:
+  gocyclo:
+    min-complexity: 20
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  gocritic:
+    enabled-tags:
+      - performance
+      - diagnostic
+      - style
+  misspell:
+    locale: US
+  govet:
+    enable:
+      - nilfunc
+      - loopclosure
+      - copylocks
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gosec
+        - noctx
+    - path: internal/infrastructure/ai/
+      linters:
+        - unused
+    - path: internal/infrastructure/persistence/postgres/graph/
+      text: "SA1019"
+  max-issues-per-linter: 50
+  max-same-issues: 10

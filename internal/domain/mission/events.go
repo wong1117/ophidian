@@ -11,19 +11,16 @@ type DomainEvent interface {
 }
 
 type MissionStarted struct {
-	MissionID  common.ID
-	Target     Target
-	Objectives []Objective
-	RoE        RoEConstraints
-	StartedAt  common.UTCTime
-	StartedBy  string
+	MissionID common.ID
+	StartedAt common.UTCTime
+	StartedBy string
 }
 
-func (e MissionStarted) EventID() string     { return e.MissionID.String() }
-func (e MissionStarted) EventType() string   { return "MissionStarted" }
+func (e MissionStarted) EventID() string            { return e.MissionID.String() }
+func (e MissionStarted) EventType() string          { return "MissionStarted" }
 func (e MissionStarted) OccurredAt() common.UTCTime { return e.StartedAt }
-func (e MissionStarted) AggregateID() string { return e.MissionID.String() }
-func (e MissionStarted) Version() int        { return 1 }
+func (e MissionStarted) AggregateID() string        { return e.MissionID.String() }
+func (e MissionStarted) Version() int               { return 1 }
 
 type PhaseTransitioned struct {
 	MissionID   common.ID

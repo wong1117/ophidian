@@ -11,7 +11,7 @@ type MissionService interface {
 	PauseMission(ctx context.Context, id string) error
 	AbortMission(ctx context.Context, id string, reason string) error
 	CompleteMission(ctx context.Context, id string) error
-	TransitionPhase(ctx context.Context, missionID string, toPhase common.Phase, reason string) error
+	TransitionPhase(ctx context.Context, missionID string, toPhase common.Phase, triggeredBy, reason string) error
 	DispatchTask(ctx context.Context, task *Task) error
 	CompleteTask(ctx context.Context, taskID string, result *TaskResult) error
 	FailTask(ctx context.Context, taskID string, err error) error

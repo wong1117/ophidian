@@ -1,0 +1,14 @@
+apiVersion: v2
+name: ophidian
+description: Ophidian Offensive AI Security Platform - Helm Chart
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - security
+  - offensive
+  - ai
+  - penetration-testing
+maintainers:
+  - name: Ophidian Team
+    email: team@ophidian.io

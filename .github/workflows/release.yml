@@ -1,0 +1,136 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 0.2.0)'
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+  attestations: write
+  id-token: write
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          fi
+          echo "Releasing version: $VERSION"
+      - name: Validate version
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version: $VERSION"
+            exit 1
+          fi
+
+  test:
+    name: Test
+    needs: [validate]
+    uses: ./.github/workflows/ci.yml
+
+  sbom:
+    name: Generate SBOM
+    needs: [validate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anchore/sbom-action@v0
+        with:
+          format: spdx-json
+          output-file: ophidian-${{ needs.validate.outputs.version }}.sbom.spdx.json
+
+  build-matrix:
+    name: Build
+    needs: [validate]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [linux, darwin]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.22' }
+      - name: Build
+        run: |
+          GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -trimpath -ldflags="-s -w -X main.version=${{ needs.validate.outputs.version }} -X main.commit=${{ github.sha }}" -o build/ophidian-server-${{ matrix.os }}-${{ matrix.arch }} ./cmd/ophidian-server
+          GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -trimpath -ldflags="-s -w -X main.version=${{ needs.validate.outputs.version }} -X main.commit=${{ github.sha }}" -o build/ophidian-cli-${{ matrix.os }}-${{ matrix.arch }} ./cmd/ophidian-cli
+      - name: Checksum
+        run: cd build && sha256sum * > checksums.txt
+      - uses: actions/upload-artifact@v4
+        with: { name: binaries-${{ matrix.os }}-${{ matrix.arch }}, path: build/ }
+
+  package:
+    name: Package Release
+    needs: [validate, build-matrix, sbom]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { pattern: binaries-*, path: build/ }
+      - name: Package
+        run: |
+          mkdir -p dist
+          VERSION=${{ needs.validate.outputs.version }}
+          cd build
+          for dir in */; do
+            os_arch=$(echo $dir | sed 's/binaries-//' | sed 's/-$//')
+            tar -czf ../dist/ophidian-${VERSION}-${os_arch}.tar.gz -C $dir .
+          done
+          cp checksums.txt ../dist/
+      - name: Generate changelog
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --tag v${{ needs.validate.outputs.version }} --latest --strip all
+        env:
+          OUTPUT: CHANGELOG.md
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.validate.outputs.version }}
+          name: Release v${{ needs.validate.outputs.version }}
+          body_path: CHANGELOG.md
+          files: dist/*
+          draft: false
+          prerelease: false
+
+  docker:
+    name: Docker
+    needs: [validate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ needs.validate.outputs.version }}
+            ghcr.io/${{ github.repository }}:latest
+          build-args: |
+            VERSION=${{ needs.validate.outputs.version }}
+            COMMIT=${{ github.sha }}

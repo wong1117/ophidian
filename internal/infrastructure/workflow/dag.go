@@ -3,6 +3,9 @@ package workflow
 import (
 	"errors"
 	"fmt"
+	"math"
+	"math/rand"
+	"time"
 )
 
 var (
@@ -15,6 +18,7 @@ var (
 	ErrWorkflowTimeout   = errors.New("workflow timed out")
 	ErrWorkflowCancelled = errors.New("workflow cancelled")
 	ErrNodeTimeout       = errors.New("node execution timed out")
+	ErrConcurrencyLimit  = errors.New("concurrency limit reached")
 )
 
 func ValidateDAG(wf *Workflow) error {
@@ -87,13 +91,24 @@ func hasCycle(nodeIDs map[string]bool, edges []Edge) bool {
 	return visited != len(nodeIDs)
 }
 
-type BackoffFunc func(attempt int) error
+type BackoffFunc func(attempt int) time.Duration
 
 func DefaultBackoff() BackoffFunc {
-	return func(attempt int) error {
-		if attempt <= 0 {
-			return nil
+	return ExponentialBackoff(100*time.Millisecond, 30*time.Second, 0.1)
+}
+
+func ExponentialBackoff(base, max time.Duration, jitter float64) BackoffFunc {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	return func(attempt int) time.Duration {
+		if attempt <= 1 {
+			return 0
 		}
-		return nil
+		backoff := float64(base) * math.Pow(2, float64(attempt-1))
+		if backoff > float64(max) {
+			backoff = float64(max)
+		}
+		jitterAmount := backoff * jitter
+		backoff += (rng.Float64()*2 - 1) * jitterAmount
+		return time.Duration(backoff)
 	}
 }

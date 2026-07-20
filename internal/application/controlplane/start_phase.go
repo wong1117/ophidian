@@ -22,7 +22,7 @@ func (uc *StartPhaseUseCase) Execute(ctx context.Context, missionID string, phas
 	}
 
 	agg := mission.NewMissionAggregate(m)
-	if err := agg.TransitionPhase(phase, phase, "phase started"); err != nil {
+	if err := agg.TransitionPhase(phase, phase, "system", "phase started"); err != nil {
 		return err
 	}
 

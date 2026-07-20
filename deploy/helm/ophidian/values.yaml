@@ -1,0 +1,124 @@
+replicaCount: 3
+
+image:
+  repository: ophidian/ophidian-server
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: ophidian.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+config:
+  server:
+    host: "0.0.0.0"
+    port: 8080
+    readTimeout: 30
+    writeTimeout: 30
+  database:
+    host: ""
+    port: 5432
+    user: "ophidian"
+    password: ""
+    database: "ophidian"
+    sslMode: "require"
+    maxConns: 20
+  redis:
+    host: ""
+    port: 6379
+    password: ""
+    db: 0
+  ai:
+    provider: "openai"
+    model: "gpt-4"
+    apiKey: ""
+    maxTokens: 4096
+    temperature: 0.7
+  logging:
+    level: "info"
+    format: "json"
+    output: "stdout"
+  auth:
+    jwtSecret: ""
+    tokenExpiry: 3600
+
+secrets:
+  databasePassword: ""
+  redisPassword: ""
+  aiApiKey: ""
+  jwtSecret: ""
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

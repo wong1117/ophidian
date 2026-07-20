@@ -1,6 +1,8 @@
 package mission
 
 import (
+	"fmt"
+
 	"github.com/ophidian/ophidian/internal/domain/common"
 )
 
@@ -28,6 +30,29 @@ func ValidateRoE(roe RoEConstraints, target Target) error {
 	if roe.MaxTargets > 0 && len(target.IPs) > roe.MaxTargets {
 		return common.ErrRoEViolation
 	}
+
+	if roe.MaxTargets > 0 {
+		totalTargets := len(target.IPs) + len(target.Domains)
+		if totalTargets > roe.MaxTargets {
+			return fmt.Errorf("%w: total targets (%d) exceeds max allowed (%d)", common.ErrRoEViolation, totalTargets, roe.MaxTargets)
+		}
+	}
+
+	if !roe.TimeWindowStart.IsZero() && !roe.TimeWindowEnd.IsZero() {
+		now := common.Now()
+		if now.Before(roe.TimeWindowStart) || now.After(roe.TimeWindowEnd) {
+			return fmt.Errorf("%w: current time is outside allowed window", common.ErrRoEViolation)
+		}
+	}
+
+	for _, excludedIP := range roe.ExcludedNets {
+		for _, targetIP := range target.IPs {
+			if excludedIP == targetIP {
+				return fmt.Errorf("%w: target ip %s is in excluded nets", common.ErrRoEViolation, targetIP)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -59,7 +84,7 @@ var missionLifecycleOrder = map[MissionStatus]int{
 }
 
 func isTerminal(status MissionStatus) bool {
-	return status == MissionCompleted || status == MissionFailed
+	return status == MissionCompleted || status == MissionFailed || status == MissionAborted
 }
 
 type StrategyRecommendation struct {

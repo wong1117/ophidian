@@ -29,6 +29,9 @@ func unmarshalJSON(data []byte, v interface{}) error {
 	return json.Unmarshal(data, v)
 }
 
+func MarshalJSON(v interface{}) []byte  { return marshalJSON(v) }
+func UnmarshalJSON(d []byte, v interface{}) error { return unmarshalJSON(d, v) }
+
 func wrapNotFound(err error, entity, id string) error {
 	if err == pgx.ErrNoRows {
 		return fmt.Errorf("%w: %s with id %s not found", common.ErrMissionNotFound, entity, id)
@@ -70,3 +73,5 @@ func repoDepsFromPool(pool *pgxpool.Pool) RepoDeps {
 		Exec:     pool.Exec,
 	}
 }
+
+func RepoDepsFromPool(pool *pgxpool.Pool) RepoDeps { return repoDepsFromPool(pool) }

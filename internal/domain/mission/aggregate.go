@@ -30,23 +30,74 @@ func (a *MissionAggregate) ClearEvents() {
 }
 
 func (a *MissionAggregate) Start() error {
-	if a.Mission.Status != MissionDraft {
-		return common.ErrInvalidTransition
+	if a.Mission.Status != MissionDraft && a.Mission.Status != MissionCreated {
+		return fmt.Errorf("%w: cannot start from status %s", common.ErrInvalidTransition, a.Mission.Status)
 	}
 	a.Mission.Status = MissionActive
 	a.Mission.UpdatedAt = common.Now()
 	a.AddEvent(MissionStarted{
 		MissionID: a.Mission.ID,
-		Target:    a.Mission.Target,
-		Objectives: a.Mission.Objectives,
-		RoE:       a.Mission.RoE,
 		StartedAt: common.Now(),
 		StartedBy: a.Mission.StartedBy,
 	})
 	return nil
 }
 
-func (a *MissionAggregate) TransitionPhase(from, to common.Phase, reason string) error {
+func (a *MissionAggregate) Pause(reason, updatedBy string) error {
+	if a.Mission.Status != MissionActive {
+		return fmt.Errorf("%w: can only pause active missions, current status is %s", common.ErrInvalidTransition, a.Mission.Status)
+	}
+	prev := a.Mission.Status
+	a.Mission.Status = MissionPaused
+	a.Mission.UpdatedAt = common.Now()
+	a.AddEvent(MissionStateChanged{
+		MissionID:  a.Mission.ID,
+		FromStatus: prev,
+		ToStatus:   MissionPaused,
+		Reason:     reason,
+		UpdatedBy:  updatedBy,
+		Timestamp:  common.Now(),
+	})
+	return nil
+}
+
+func (a *MissionAggregate) Resume(updatedBy string) error {
+	if a.Mission.Status != MissionPaused {
+		return fmt.Errorf("%w: can only resume paused missions, current status is %s", common.ErrInvalidTransition, a.Mission.Status)
+	}
+	prev := a.Mission.Status
+	a.Mission.Status = MissionActive
+	a.Mission.UpdatedAt = common.Now()
+	a.AddEvent(MissionStateChanged{
+		MissionID:  a.Mission.ID,
+		FromStatus: prev,
+		ToStatus:   MissionActive,
+		Reason:     "mission resumed",
+		UpdatedBy:  updatedBy,
+		Timestamp:  common.Now(),
+	})
+	return nil
+}
+
+func (a *MissionAggregate) Abort(reason, updatedBy string) error {
+	if isTerminal(a.Mission.Status) {
+		return fmt.Errorf("%w: cannot abort mission in terminal status %s", common.ErrInvalidTransition, a.Mission.Status)
+	}
+	prev := a.Mission.Status
+	a.Mission.Status = MissionAborted
+	a.Mission.UpdatedAt = common.Now()
+	a.AddEvent(MissionStateChanged{
+		MissionID:  a.Mission.ID,
+		FromStatus: prev,
+		ToStatus:   MissionAborted,
+		Reason:     reason,
+		UpdatedBy:  updatedBy,
+		Timestamp:  common.Now(),
+	})
+	return nil
+}
+
+func (a *MissionAggregate) TransitionPhase(from, to common.Phase, triggeredBy, reason string) error {
 	if !isValidTransition(from, to) {
 		return common.ErrInvalidTransition
 	}
@@ -56,7 +107,7 @@ func (a *MissionAggregate) TransitionPhase(from, to common.Phase, reason string)
 		FromPhase:   from,
 		ToPhase:     to,
 		Reason:      reason,
-		TriggeredBy: "system",
+		TriggeredBy: triggeredBy,
 		Timestamp:   common.Now(),
 	})
 	return nil
