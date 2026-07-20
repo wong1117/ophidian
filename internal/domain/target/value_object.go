@@ -2,7 +2,6 @@ package target
 
 import (
 	"net"
-	"strings"
 )
 
 type CIDR struct {

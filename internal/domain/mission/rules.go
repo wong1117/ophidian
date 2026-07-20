@@ -31,6 +31,37 @@ func ValidateRoE(roe RoEConstraints, target Target) error {
 	return nil
 }
 
+var allowedLifecycleTransitions = map[MissionStatus][]MissionStatus{
+	MissionCreated:  {MissionPlanning},
+	MissionPlanning: {MissionReady},
+	MissionReady:    {MissionRunning},
+	MissionRunning:  {MissionCompleted, MissionFailed},
+}
+
+func isValidLifecycleTransition(from, to MissionStatus) bool {
+	allowed, ok := allowedLifecycleTransitions[from]
+	if !ok {
+		return false
+	}
+	for _, s := range allowed {
+		if s == to {
+			return true
+		}
+	}
+	return false
+}
+
+var missionLifecycleOrder = map[MissionStatus]int{
+	MissionCreated:  1,
+	MissionPlanning: 2,
+	MissionReady:    3,
+	MissionRunning:  4,
+}
+
+func isTerminal(status MissionStatus) bool {
+	return status == MissionCompleted || status == MissionFailed
+}
+
 type StrategyRecommendation struct {
 	PlanID         common.ID
 	SuggestedPath []AttackStep

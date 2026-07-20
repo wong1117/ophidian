@@ -8,6 +8,13 @@ import (
 	"github.com/ophidian/ophidian/internal/domain/attackplan"
 )
 
+var riskFloatMap = map[common.RiskLevel]float64{
+	common.RiskLow:      0.25,
+	common.RiskMedium:   0.50,
+	common.RiskHigh:     0.75,
+	common.RiskCritical: 1.00,
+}
+
 type ReviewResult struct {
 	PlanID        string
 	Passed        bool
@@ -94,7 +101,7 @@ func (da *DevilsAdvocate) Review(ctx context.Context, plan *attackplan.AttackPla
 		result.Weaknesses = append(result.Weaknesses, fmt.Sprintf("Overall plan confidence too low: %.2f", plan.Confidence))
 	}
 
-	result.RiskScore = float64(bestPath.RiskLevel)
+	result.RiskScore = riskFloatMap[bestPath.RiskLevel]
 	result.FailChance = 1.0 - bestPath.Confidence
 
 	result.StealthScore = 1.0 - math.Max(0, math.Min(1, result.RiskScore))
@@ -126,7 +133,7 @@ func (da *DevilsAdvocate) generateAlternatives(ctx context.Context, plan *attack
 		result.Alternatives = append(result.Alternatives, AlternativeStrategy{
 			Description: fmt.Sprintf("Alternative path %d with risk level %s", i+1, path.RiskLevel),
 			Confidence:  path.Confidence,
-			Stealth:     1.0 - float64(path.RiskLevel),
+			Stealth:     1.0 - riskFloatMap[path.RiskLevel],
 			RiskLevel:   path.RiskLevel,
 		})
 	}

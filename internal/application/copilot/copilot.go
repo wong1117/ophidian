@@ -2,11 +2,7 @@ package copilot
 
 import (
 	"context"
-	"fmt"
 	"strings"
-
-	"github.com/ophidian/ophidian/internal/domain/common"
-	"github.com/ophidian/ophidian/internal/domain/mission"
 )
 
 type IntentType string

@@ -19,7 +19,7 @@ func NewCollectEvidenceUseCase(fr finding.FindingRepository, c EvidenceCollector
 }
 
 func (uc *CollectEvidenceUseCase) Execute(ctx context.Context, findingID string) ([]finding.Evidence, error) {
-	f, err := uc.findingRepo.FindByID(ctx, findingID)
+	_, err := uc.findingRepo.FindByID(ctx, findingID)
 	if err != nil {
 		return nil, err
 	}

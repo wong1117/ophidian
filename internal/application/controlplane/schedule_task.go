@@ -2,7 +2,6 @@ package controlplane
 
 import (
 	"context"
-	"sort"
 	"github.com/ophidian/ophidian/internal/domain/common"
 	"github.com/ophidian/ophidian/internal/domain/mission"
 )
@@ -24,7 +23,7 @@ func (uc *ScheduleTaskUseCase) Execute(ctx context.Context, missionID string, ta
 
 	sorted := sortByPriority(tasks)
 	for _, task := range sorted {
-		task.Status = mission.TaskPending
+		task.Status = common.TaskPending
 		m.Tasks = append(m.Tasks, *task)
 		if err := uc.missionRepo.SaveTask(ctx, task); err != nil {
 			return err

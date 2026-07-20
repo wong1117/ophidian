@@ -16,12 +16,24 @@ func NewCorrelateFindingsUseCase(fr finding.FindingRepository, planner attackpla
 }
 
 func (uc *CorrelateFindingsUseCase) Execute(ctx context.Context, missionID string) (*attackplan.CorrelationResult, error) {
-	findings, err := uc.findingRepo.FindByMission(ctx, missionID)
+	domainFindings, err := uc.findingRepo.FindByMission(ctx, missionID)
 	if err != nil {
 		return nil, err
 	}
 
-	correlation, err := uc.planner.CorrelateFindings(ctx, findings)
+	planFindings := make([]attackplan.Finding, len(domainFindings))
+	for i, f := range domainFindings {
+		planFindings[i] = attackplan.Finding{
+			ID:          f.ID.String(),
+			Title:       f.Title,
+			Description: f.Description,
+			Severity:    string(f.Severity),
+			CVE:         f.CVE,
+			Confidence:  string(f.Confidence),
+		}
+	}
+
+	correlation, err := uc.planner.CorrelateFindings(ctx, planFindings)
 	if err != nil {
 		return nil, err
 	}

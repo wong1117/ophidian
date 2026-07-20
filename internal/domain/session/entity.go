@@ -43,6 +43,6 @@ type SessionStatus string
 const (
 	SessionActive    SessionStatus = "ACTIVE"
 	SessionIdle      SessionStatus = "IDLE"
-	SessionLost      SessionStatus = "LOST"
+	SessionStatusLost SessionStatus = "LOST"
 	SessionClosed    SessionStatus = "CLOSED"
 )

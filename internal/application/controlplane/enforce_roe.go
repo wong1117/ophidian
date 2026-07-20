@@ -2,7 +2,6 @@ package controlplane
 
 import (
 	"context"
-	"github.com/ophidian/ophidian/internal/domain/common"
 	"github.com/ophidian/ophidian/internal/domain/mission"
 )
 

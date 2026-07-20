@@ -1,6 +1,9 @@
 package mission
 
-import "context"
+import (
+	"context"
+	"github.com/ophidian/ophidian/internal/domain/common"
+)
 
 type MissionService interface {
 	CreateMission(ctx context.Context, req CreateMissionRequest) (*Mission, error)

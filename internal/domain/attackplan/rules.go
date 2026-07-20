@@ -5,5 +5,5 @@ func RankPathsByRisk(graph AttackGraph) []RankedPath {
 }
 
 func CalculatePathScore(path RankedPath) float64 {
-	return path.Confidence * (1 - float64(path.RiskLevel))
+	return path.Confidence
 }

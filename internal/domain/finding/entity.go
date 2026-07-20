@@ -23,7 +23,7 @@ type FindingStatus string
 
 const (
 	FindingNew       FindingStatus = "NEW"
-	FindingConfirmed FindingStatus = "CONFIRMED"
+	FindingStatusConfirmed FindingStatus = "CONFIRMED"
 	FindingDismissed FindingStatus = "DISMISSED"
 	FindingRemediated FindingStatus = "REMEDIATED"
 )

@@ -26,7 +26,7 @@ func (uc *DispatchTaskUseCase) Execute(ctx context.Context, taskID string) error
 		return err
 	}
 
-	task.Status = mission.TaskRunning
+	task.Status = common.TaskRunning
 	started := common.Now()
 	task.StartedAt = &started
 
@@ -35,7 +35,7 @@ func (uc *DispatchTaskUseCase) Execute(ctx context.Context, taskID string) error
 	}
 
 	if err := uc.dispatcher.Dispatch(ctx, task); err != nil {
-		task.Status = mission.TaskFailed
+		task.Status = common.TaskFailed
 		_ = uc.missionRepo.UpdateTask(ctx, task)
 		return err
 	}

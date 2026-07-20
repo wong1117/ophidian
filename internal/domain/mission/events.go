@@ -84,6 +84,21 @@ func (e AIRecommendationReceived) OccurredAt() common.UTCTime { return e.Receive
 func (e AIRecommendationReceived) AggregateID() string        { return e.MissionID.String() }
 func (e AIRecommendationReceived) Version() int               { return 1 }
 
+type MissionStateChanged struct {
+	MissionID  common.ID
+	FromStatus MissionStatus
+	ToStatus   MissionStatus
+	Reason     string
+	UpdatedBy  string
+	Timestamp  common.UTCTime
+}
+
+func (e MissionStateChanged) EventID() string            { return e.MissionID.String() }
+func (e MissionStateChanged) EventType() string          { return "MissionStateChanged" }
+func (e MissionStateChanged) OccurredAt() common.UTCTime { return e.Timestamp }
+func (e MissionStateChanged) AggregateID() string        { return e.MissionID.String() }
+func (e MissionStateChanged) Version() int               { return 1 }
+
 type AIPlanDecision struct {
 	MissionID common.ID
 	PlanID    common.ID

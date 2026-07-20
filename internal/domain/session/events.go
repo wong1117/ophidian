@@ -23,6 +23,23 @@ func (e SessionEstablished) OccurredAt() common.UTCTime { return e.Timestamp }
 func (e SessionEstablished) AggregateID() string        { return e.SessionID.String() }
 func (e SessionEstablished) Version() int               { return 1 }
 
+type SessionCreated struct {
+	SessionID     common.ID
+	MissionID     common.ID
+	TargetID      common.ID
+	Type          SessionType
+	Privilege     PrivilegeLevel
+	Host          string
+	Port          int
+	Timestamp     common.UTCTime
+}
+
+func (e SessionCreated) EventID() string            { return e.SessionID.String() }
+func (e SessionCreated) EventType() string          { return "SessionCreated" }
+func (e SessionCreated) OccurredAt() common.UTCTime { return e.Timestamp }
+func (e SessionCreated) AggregateID() string        { return e.SessionID.String() }
+func (e SessionCreated) Version() int               { return 1 }
+
 type SessionLost struct {
 	SessionID common.ID
 	Timestamp common.UTCTime

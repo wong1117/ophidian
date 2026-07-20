@@ -2,6 +2,7 @@ package cognitive
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"github.com/ophidian/ophidian/internal/domain/common"
 	"github.com/ophidian/ophidian/internal/domain/attackplan"
@@ -68,7 +69,7 @@ func (e *TTPAdaptationEngine) findAlternative(ctx context.Context, stepID string
 	for _, node := range plan.Graph.Nodes {
 		if node.ID == stepID {
 			return &attackplan.AttackStep{
-				Action:     node.Type,
+				Action:     string(node.Type),
 				Service:    node.Service,
 				CVE:        node.CVE,
 				Confidence: node.Confidence * 0.8,

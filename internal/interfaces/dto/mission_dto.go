@@ -34,3 +34,12 @@ type MissionResponse struct {
 	Status    string `json:"status"`
 	CreatedAt string `json:"created_at"`
 }
+
+type MissionLifecycleResponse struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	StartedBy string `json:"started_by"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}

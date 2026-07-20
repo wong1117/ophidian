@@ -1,6 +1,8 @@
 package mission
 
 import (
+	"fmt"
+
 	"github.com/ophidian/ophidian/internal/domain/common"
 )
 
@@ -56,6 +58,57 @@ func (a *MissionAggregate) TransitionPhase(from, to common.Phase, reason string)
 		Reason:      reason,
 		TriggeredBy: "system",
 		Timestamp:   common.Now(),
+	})
+	return nil
+}
+
+func (a *MissionAggregate) TransitionToPlanning(updatedBy string) error {
+	return a.transitionLifecycle(MissionCreated, MissionPlanning, "transition to planning", updatedBy)
+}
+
+func (a *MissionAggregate) TransitionToReady(updatedBy string) error {
+	return a.transitionLifecycle(MissionPlanning, MissionReady, "plan approved, ready to execute", updatedBy)
+}
+
+func (a *MissionAggregate) TransitionToRunning(updatedBy string) error {
+	return a.transitionLifecycle(MissionReady, MissionRunning, "execution started", updatedBy)
+}
+
+func (a *MissionAggregate) Complete(updatedBy string) error {
+	return a.transitionLifecycle(MissionRunning, MissionCompleted, "all objectives met", updatedBy)
+}
+
+func (a *MissionAggregate) Fail(reason string, updatedBy string) error {
+	if !isValidLifecycleTransition(a.Mission.Status, MissionFailed) {
+		return fmt.Errorf("%w: cannot fail mission in status %s", common.ErrInvalidTransition, a.Mission.Status)
+	}
+	prev := a.Mission.Status
+	a.Mission.Status = MissionFailed
+	a.Mission.UpdatedAt = common.Now()
+	a.AddEvent(MissionStateChanged{
+		MissionID:  a.Mission.ID,
+		FromStatus: prev,
+		ToStatus:   MissionFailed,
+		Reason:     reason,
+		UpdatedBy:  updatedBy,
+		Timestamp:  common.Now(),
+	})
+	return nil
+}
+
+func (a *MissionAggregate) transitionLifecycle(expectedFrom, to MissionStatus, reason, updatedBy string) error {
+	if a.Mission.Status != expectedFrom {
+		return fmt.Errorf("%w: expected status %s, got %s", common.ErrInvalidTransition, expectedFrom, a.Mission.Status)
+	}
+	a.Mission.Status = to
+	a.Mission.UpdatedAt = common.Now()
+	a.AddEvent(MissionStateChanged{
+		MissionID:  a.Mission.ID,
+		FromStatus: expectedFrom,
+		ToStatus:   to,
+		Reason:     reason,
+		UpdatedBy:  updatedBy,
+		Timestamp:  common.Now(),
 	})
 	return nil
 }

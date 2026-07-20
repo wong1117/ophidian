@@ -45,9 +45,9 @@ func (uc *CreateMissionUseCase) Execute(ctx context.Context, req mission.CreateM
 	}
 
 	for _, event := range agg.Events {
-		if err := eventStore.Append(ctx, event); err != nil {
-			return nil, err
-		}
+	if err := uc.eventStore.Append(ctx, event); err != nil {
+		return nil, err
+	}
 	}
 
 	return m, nil

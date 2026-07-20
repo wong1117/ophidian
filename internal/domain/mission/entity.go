@@ -25,6 +25,11 @@ const (
 	MissionCompleted MissionStatus = "COMPLETED"
 	MissionAborted   MissionStatus = "ABORTED"
 	MissionFailed    MissionStatus = "FAILED"
+
+	MissionCreated   MissionStatus = "CREATED"
+	MissionPlanning  MissionStatus = "PLANNING"
+	MissionReady     MissionStatus = "READY"
+	MissionRunning   MissionStatus = "RUNNING"
 )
 
 type Target struct {
