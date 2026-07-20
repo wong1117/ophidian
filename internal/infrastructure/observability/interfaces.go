@@ -83,17 +83,17 @@ func NewObserver(logger Logger, tracer Tracer, metrics Metrics) *Observer {
 
 func (o *Observer) StartSpan(ctx context.Context, name string) (context.Context, Span) {
 	if o.Tracer == nil {
-		return ctx, noopSpan{}
+		return ctx, NoopSpan{}
 	}
 	return o.Tracer.StartSpan(ctx, name)
 }
 
-type noopSpan struct{}
+type NoopSpan struct{}
 
-func (n noopSpan) End()                                         {}
-func (n noopSpan) AddEvent(name string, attrs ...Field)         {}
-func (n noopSpan) SetAttribute(key string, value interface{})   {}
-func (n noopSpan) RecordError(err error)                        {}
+func (n NoopSpan) End()                                         {}
+func (n NoopSpan) AddEvent(name string, attrs ...Field)         {}
+func (n NoopSpan) SetAttribute(key string, value interface{})   {}
+func (n NoopSpan) RecordError(err error)                        {}
 
 var _ ObserverInterface = (*Observer)(nil)
 

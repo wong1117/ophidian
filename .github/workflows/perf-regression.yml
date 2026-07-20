@@ -1,0 +1,66 @@
+name: Performance Regression
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    name: Benchmark & Detect Regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Run Benchmarks
+        run: |
+          go test -bench=. -benchmem -benchtime=2s -count=5 ./cmd/benchmarks/ -run '^$' 2>&1 | tee bench-results.txt
+      - name: Parse Results
+        run: |
+          go run ./cmd/perfcheck/main.go parse bench-results.txt > current-bench.json
+      - name: Load Baseline
+        run: |
+          if [ -f bench-baseline.json ]; then
+            cp bench-baseline.json baseline.json
+          else
+            echo "[]" > baseline.json
+            echo "No baseline found - saving current as baseline"
+            cp current-bench.json bench-baseline.json
+          fi
+      - name: Detect Regression
+        run: |
+          go run ./cmd/perfcheck/main.go detect baseline.json current-bench.json 2>&1 | tee regression-report.txt
+      - name: Check Threshold
+        run: |
+          if grep -q "REGRESSION DETECTED" regression-report.txt 2>/dev/null; then
+            echo "Performance regression detected!"
+            if grep -q "CRITICAL" regression-report.txt 2>/dev/null; then
+              echo "Critical regression - failing build"
+              cat regression-report.txt
+              exit 1
+            fi
+          fi
+          echo "No critical regression detected"
+      - name: Save Baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          cp current-bench.json bench-baseline.json
+          git config user.name "perf-bot"
+          git config user.email "perf@ophidian.io"
+          git add bench-baseline.json bench-results.txt
+          git diff --staged --quiet || git commit -m "perf: update benchmark baseline" && git push
+      - name: Upload Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-regression-report
+          path: |
+            regression-report.txt
+            bench-results.txt
+            current-bench.json

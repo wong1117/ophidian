@@ -1,0 +1,67 @@
+{
+  "generated_at": "2026-07-20T14:54:09.738101264Z",
+  "total": 8,
+  "direct": 8,
+  "indirect": 0,
+  "vulnerable": 0,
+  "dependencies": [
+    {
+      "name": "github.com/jackc/pgx/v5",
+      "version": "v5.6.0",
+      "outdated": false,
+      "vulnerabilities": null,
+      "direct": true
+    },
+    {
+      "name": "github.com/labstack/echo/v4",
+      "version": "v4.12.0",
+      "outdated": false,
+      "vulnerabilities": null,
+      "direct": true
+    },
+    {
+      "name": "github.com/nats-io/nats.go",
+      "version": "v1.36.0",
+      "outdated": false,
+      "vulnerabilities": null,
+      "direct": true
+    },
+    {
+      "name": "github.com/redis/go-redis/v9",
+      "version": "v9.5.3",
+      "outdated": false,
+      "vulnerabilities": null,
+      "direct": true
+    },
+    {
+      "name": "github.com/spf13/cobra",
+      "version": "v1.8.1",
+      "outdated": false,
+      "vulnerabilities": null,
+      "direct": true
+    },
+    {
+      "name": "github.com/stretchr/testify",
+      "version": "v1.9.0",
+      "outdated": false,
+      "vulnerabilities": null,
+      "direct": true
+    },
+    {
+      "name": "golang.org/x/crypto",
+      "version": "v0.26.0",
+      "outdated": false,
+      "vulnerabilities": null,
+      "direct": true
+    },
+    {
+      "name": "gopkg.in/yaml.v3",
+      "version": "v3.0.1",
+      "outdated": false,
+      "vulnerabilities": null,
+      "direct": true
+    }
+  ],
+  "vulnerabilities": null,
+  "status": "HEALTHY"
+}

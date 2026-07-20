@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
 jobs:
   lint:
     name: Lint
@@ -13,9 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: '1.22' }
+        with:
+          go-version: '1.22'
       - uses: golangci/golangci-lint-action@v6
-        with: { version: latest, args: --timeout=10m }
+        with:
+          version: latest
+          args: --timeout=10m --out-format=colored-line-number
+      - name: Architecture Lint
+        run: go install github.com/fe3dback/go-arch-lint@latest && go-arch-lint check
 
   test:
     name: Test
@@ -24,13 +34,12 @@ jobs:
     services:
       postgres:
         image: postgres:16-alpine
-        env: { POSTGRES_USER: ophidian, POSTGRES_PASSWORD: test, POSTGRES_DB: ophidian_test }
+        env:
+          POSTGRES_USER: ophidian
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: ophidian_test
         ports: ['5432:5432']
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
       redis:
         image: redis:7-alpine
         ports: ['6379:6379']
@@ -40,12 +49,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: '${{ matrix.go-version }}' }
+        with:
+          go-version: '${{ matrix.go-version }}'
       - run: go mod download
-      - run: go test -race -count=1 -coverprofile=coverage.out ./...
+      - name: Race Test
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+      - name: Coverage Gate
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | sed 's/.*\s\([0-9.]*\)%.*/\1/')
+          echo "Coverage: ${COVERAGE}%"
+          if [ "$(echo "$COVERAGE < 50" | bc)" -eq 1 ]; then
+            echo "Coverage ${COVERAGE}% is below 50% threshold!"
+            exit 1
+          fi
       - name: Upload coverage
         uses: actions/upload-artifact@v4
-        with: { name: coverage-${{ matrix.go-version }}, path: coverage.out }
+        with:
+          name: coverage-${{ matrix.go-version }}
+          path: coverage.out
 
   fuzz:
     name: Fuzz
@@ -54,8 +75,52 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: '1.22' }
-      - run: go test -fuzz=Fuzz -fuzztime=60s ./internal/infrastructure/scheduler/... ./internal/infrastructure/queue/... ./internal/infrastructure/secrets/... ./internal/application/feature/...
+        with:
+          go-version: '1.22'
+      - run: go mod download
+      - name: Fuzz Test
+        run: |
+          go test -fuzz=Fuzz -fuzztime=120s ./internal/infrastructure/scheduler/... 2>&1 | tee fuzz-scheduler.txt
+          go test -fuzz=Fuzz -fuzztime=120s ./internal/infrastructure/queue/... 2>&1 | tee fuzz-queue.txt
+          go test -fuzz=Fuzz -fuzztime=120s ./internal/infrastructure/secrets/... 2>&1 | tee fuzz-secrets.txt
+          go test -fuzz=Fuzz -fuzztime=60s ./internal/application/feature/... 2>&1 | tee fuzz-feature.txt
+      - name: Fuzz Summary
+        if: "always()"
+        run: "grep -e '^ok' -e '^FAIL' -e 'fuzz: elapsed' fuzz-*.txt || true"
+
+  benchmark:
+    name: Benchmark
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - run: go mod download
+      - name: Run Benchmarks
+        run: go test -bench=BenchmarkSuite -benchmem -benchtime=3s -count=5 ./cmd/benchmarks/ -run '^$' 2>&1 | tee bench-current.txt
+      - name: Check Regression
+        run: |
+          if git show origin/main:bench-baseline.txt > bench-baseline.txt 2>/dev/null; then
+            CURRENT=$(grep "BenchmarkSuite_FullPipeline/QueueEnqueue" bench-current.txt | sed 's/.*\s\([0-9.]*\) ns\/op.*/\1/')
+            BASELINE=$(grep "BenchmarkSuite_FullPipeline/QueueEnqueue" bench-baseline.txt | sed 's/.*\s\([0-9.]*\) ns\/op.*/\1/')
+            if [ -n "$CURRENT" ] && [ -n "$BASELINE" ]; then
+              REGRESSION=$(echo "scale=2; $CURRENT / $BASELINE" | bc)
+              echo "QueueEnqueue: baseline=$BASELINE ns/op, current=$CURRENT ns/op, ratio=$REGRESSION"
+              if [ "$(echo "$REGRESSION > 1.20" | bc)" -eq 1 ]; then
+                echo "WARNING: Performance regression over 20% detected!"
+              fi
+            fi
+          else
+            echo "No baseline found - saving current as baseline"
+            cp bench-current.txt bench-baseline.txt
+          fi
+      - name: Upload benchmark baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-baseline
+          path: bench-baseline.txt
 
   build:
     name: Build
@@ -64,8 +129,53 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: '1.22' }
-      - run: make build
-      - run: make build-server build-cli
-      - uses: actions/upload-artifact@v4
-        with: { name: binaries, path: build/ }
+        with:
+          go-version: '1.22'
+      - name: Build
+        run: |
+          go build -trimpath -ldflags="-s -w" -o build/ophidian-server ./cmd/ophidian-server
+          go build -trimpath -ldflags="-s -w" -o build/ophidian-cli ./cmd/ophidian-cli
+          go build -trimpath -ldflags="-s -w" -o build/ophidian-agent ./cmd/ophidian-agent
+          go build -trimpath -ldflags="-s -w" -o build/ophidian-worker ./cmd/ophidian-worker
+      - name: SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          format: spdx-json
+          output-file: ophidian-dev.sbom.spdx.json
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: build/
+
+  arch-check:
+    name: Architecture Compliance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Run Architecture Governance Check
+        run: go run ./cmd/archlint . --json
+      - name: Upload Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-compliance-report
+          path: arch-compliance-report.json
+
+  dep-check:
+    name: Dependency Health
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Check Dependencies
+        run: go run ./cmd/depcheck
+      - name: Upload Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dep-health-report
+          path: dep-health-report.json

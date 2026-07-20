@@ -44,7 +44,7 @@ func NewTracer(cfg TracerConfig) Tracer {
 
 func (t *spanTracer) StartSpan(ctx context.Context, name string) (context.Context, Span) {
 	if !t.config.Enabled {
-		return ctx, noopSpan{}
+		return ctx, NoopSpan{}
 	}
 
 	traceID := newSpanID(16)

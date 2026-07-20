@@ -1,4 +1,4 @@
-.PHONY: all build build-server build-cli build-agent build-worker test test-race test-coverage lint arch-lint clean run-server run-cli fuzz fuzz-cron fuzz-feature test-integration quality check dev-setup dev-reset dev-logs docs godoc examples scaffold
+.PHONY: all build build-server build-cli build-agent build-worker test test-race test-coverage lint arch-lint arch-check clean run-server run-cli fuzz fuzz-cron fuzz-feature test-integration quality check dev-setup dev-reset dev-logs docs godoc examples scaffold bench bench-full bench-save bench-cmp
 
 APP_NAME := ophidian
 BUILD_DIR := build
@@ -50,6 +50,10 @@ lint:
 	golangci-lint run ./... --timeout=10m
 
 arch-lint:
+
+arch-check:
+	go run ./cmd/archlint . --json
+	@echo "Architecture compliance report: arch-compliance-report.json"
 	go-arch-lint check
 
 clean:
@@ -98,7 +102,27 @@ scaffold:
 	@test -n "$(NAME)" || (echo "Usage: make scaffold NAME=my-service TEMPLATE=service"; exit 1)
 	go run ./cmd/ophidian-cli scaffold $(NAME) --template $(TEMPLATE)
 
-quality: lint test-race test-coverage
+bench:
+	go test -bench=. -benchmem -benchtime=2s ./internal/infrastructure/... ./internal/application/... ./pkg/... -run '^$$' 2>&1 | tee bench-results.txt
+
+bench-full:
+	go test -bench=BenchmarkSuite -benchmem -benchtime=5s ./cmd/benchmarks/ -run '^$$' 2>&1 | tee bench-full.txt
+
+bench-save:
+	go test -bench=BenchmarkSuite -benchmem -benchtime=5s -count=10 ./cmd/benchmarks/ -run '^$$' 2>&1 | tee bench-history.txt
+
+bench-cmp:
+	@test -f bench-history.txt || (echo "Run make bench-save first"; exit 1)
+	@echo "Comparing current benchmarks with saved baseline..."
+	go test -bench=BenchmarkSuite -benchmem -benchtime=2s ./cmd/benchmarks/ -run '^$$' 2>&1 | tee bench-current.txt
+	@echo "Diff saved baseline vs current:"
+	diff <(grep "ns/op" bench-history.txt | head -20 | cut -d'/' -f3 | sort) <(grep "ns/op" bench-current.txt | head -20 | cut -d'/' -f3 | sort) || true
+
+quality: lint test-race test-coverage arch-check dep-check maintain-check
+
+maintain-check:
+	go run ./cmd/maintain
+	@echo "Maintainability report: maintainability-report.json"
 	@echo "Quality checks complete."
 
 check: build lint test-race

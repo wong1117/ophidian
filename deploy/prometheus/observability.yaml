@@ -1,0 +1,182 @@
+# Ophidian Observability Configuration
+
+## Trace Sampling Rules
+
+sampling:
+  default_rate: 0.1
+  rules:
+    - event_type: "recon_*"
+      rate: 0.1
+      reason: "Background reconnaissance - high volume, low value"
+    - event_type: "exploit_*"
+      rate: 1.0
+      reason: "Exploit executions - critical path, must trace all"
+    - event_type: "Mission*"
+      rate: 1.0
+      reason: "Mission lifecycle events - business critical"
+    - event_type: "Policy*"
+      rate: 1.0
+      reason: "Policy evaluations - security critical"
+    - event_type: "AIPlan*"
+      rate: 0.5
+      reason: "AI plan generation - moderate value"
+    - event_type: "http_request"
+      rate: 0.05
+      reason: "HTTP requests - extreme volume, sample only"
+
+## Prometheus Metric Cardinality Rules
+
+cardinality:
+  max_labels_per_metric: 20
+  forbidden_labels:
+    - client_ip
+    - user_agent
+    - raw_url
+    - request_body_hash
+  allowed_labels:
+    - service
+    - method
+    - status_code
+    - endpoint_pattern
+    - tenant_id
+    - environment
+
+## Alerting Rules
+
+groups:
+  - name: ophidian-slos
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          slo: "99.9"
+        annotations:
+          summary: "Error rate exceeds 1% (SLO: 99.9% availability)"
+          description: "Current error rate is {{ $value | humanizePercentage }}"
+
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, service)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+          slo: "p99-latency"
+        annotations:
+          summary: "p99 latency exceeds 2s for {{ $labels.service }}"
+          description: "p99 latency is {{ $value }}s"
+
+      - alert: ErrorBudgetBurnt
+        expr: |
+          (
+            1 - (
+              sum(rate(http_requests_total{status!~"5.."}[30d]))
+              /
+              sum(rate(http_requests_total[30d]))
+            )
+          ) > 0.1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Error budget burnt >10% over 30 days"
+          description: "{{ $value | humanizePercentage }} of error budget consumed"
+
+  - name: ophidian-infrastructure
+    rules:
+      - alert: DatabaseConnectionPoolExhausted
+        expr: pg_stat_database_numbackends / pg_settings_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool >80% utilized"
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage >85%"
+
+      - alert: QueueDepthHigh
+        expr: ophidian_queue_depth > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Queue depth exceeds 1000 for 10 minutes"
+
+  - name: ophidian-ai
+    rules:
+      - alert: AITokenUsageSpike
+        expr: rate(ai_tokens_total[1h]) > 100000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI token usage spike detected (>100k tokens/hour)"
+
+      - alert: AILatencyHigh
+        expr: histogram_quantile(0.95, rate(ai_request_duration_seconds_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AI request p95 latency >30 seconds"
+
+## SLO Definitions
+
+slos:
+  control_plane_api:
+    name: "Control Plane API Availability"
+    target: 99.9
+    window: 30d
+    description: "HTTP 5xx error rate must be <0.1% over 30 days"
+  
+  execution_plane:
+    name: "Execution Plane Task Completion"
+    target: 99.5
+    window: 7d
+    description: "Task completion rate must exceed 99.5% over 7 days"
+  
+  ai_plane:
+    name: "AI Plane Response Time"
+    target: 95.0
+    window: 1d
+    description: "95% of AI requests must complete within 30 seconds"
+  
+  event_store:
+    name: "EventStore Write Availability"
+    target: 99.99
+    window: 30d
+    description: "EventStore append success rate must exceed 99.99%"
+
+## Log Correlation Rules
+
+logging:
+  required_fields:
+    - correlation_id
+    - trace_id
+    - service
+    - level
+  forbidden_in_logs:
+    - password
+    - secret
+    - api_key
+    - token
+    - authorization
+  redaction_rules:
+    - pattern: "(Bearer|Basic) [A-Za-z0-9+/=_-]+"
+      replacement: "[REDACTED_AUTH]"
+    - pattern: "[a-f0-9]{64}"
+      replacement: "[REDACTED_HASH]"

@@ -1,0 +1,50 @@
+{
+  "Pass": false,
+  "Errors": 2,
+  "Warnings": 4,
+  "Infos": 0,
+  "Violations": [
+    {
+      "Rule": "APPLICATION_PURITY",
+      "File": "internal/application/aiplane/generate_plan.go",
+      "Line": 12,
+      "Message": "application imports interfaces/DTO package: github.com/ophidian/ophidian/internal/interfaces/dto",
+      "Severity": "WARNING"
+    },
+    {
+      "Rule": "APPLICATION_PURITY",
+      "File": "internal/application/controlplane/orchestrate_mission.go",
+      "Line": 9,
+      "Message": "application imports interfaces/DTO package: github.com/ophidian/ophidian/internal/interfaces/dto",
+      "Severity": "WARNING"
+    },
+    {
+      "Rule": "APPLICATION_PURITY",
+      "File": "internal/application/executionplane/exploit/execute_exploit.go",
+      "Line": 11,
+      "Message": "application imports interfaces/DTO package: github.com/ophidian/ophidian/internal/interfaces/dto",
+      "Severity": "WARNING"
+    },
+    {
+      "Rule": "APPLICATION_PURITY",
+      "File": "internal/application/executionplane/report/generate_report.go",
+      "Line": 13,
+      "Message": "application imports interfaces/DTO package: github.com/ophidian/ophidian/internal/interfaces/dto",
+      "Severity": "WARNING"
+    },
+    {
+      "Rule": "INFRASTRUCTURE_PURITY",
+      "File": "internal/infrastructure/rag/ai_memory.go",
+      "Line": 11,
+      "Message": "infrastructure imports application layer: github.com/ophidian/ophidian/internal/application/cognitive",
+      "Severity": "ERROR"
+    },
+    {
+      "Rule": "INFRASTRUCTURE_PURITY",
+      "File": "internal/infrastructure/rag/memory_store.go",
+      "Line": 9,
+      "Message": "infrastructure imports application layer: github.com/ophidian/ophidian/internal/application/cognitive",
+      "Severity": "ERROR"
+    }
+  ]
+}

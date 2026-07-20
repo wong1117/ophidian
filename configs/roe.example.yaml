@@ -1,0 +1,43 @@
+version: "1.0"
+
+mission:
+  max_scan_depth: 3
+  max_concurrent_ops: 5
+  max_session_count: 10
+  allowed_ports: [80, 443, 22, 8080, 8443]
+  excluded_ports: []
+  time_window_start: "2026-01-01T00:00:00Z"
+  time_window_end: "2026-12-31T23:59:59Z"
+
+boundaries:
+  allowed_networks:
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
+  deny_networks: []
+  deny_domains: []
+  max_hosts_per_scope: 100
+
+approval:
+  require_approval: false
+  min_confidence_threshold: 0.7
+  auto_approve_actions: ["ping", "whois", "dns_lookup", "banner_grab", "http_get"]
+  auto_approve_ports: [80, 443]
+  auto_approve_targets: []
+  max_auto_approve_risk: 2
+
+risk:
+  max_severity: "HIGH"
+  max_cvss: 9.0
+  max_exploit_risk: 3
+  allow_destructive: false
+  allow_persistence: false
+  allow_exfiltration: false
+
+ai:
+  provider: "openai"
+  model: "gpt-4"
+  min_plan_confidence: 0.7
+  min_ttp_confidence: 0.6
+  require_evidence: true
+  require_human_review: false
