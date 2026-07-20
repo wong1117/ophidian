@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/ophidian/ophidian/internal/domain/common"
 	"github.com/ophidian/ophidian/internal/domain/mission"
@@ -12,15 +13,18 @@ import (
 type OrchestrateMissionUseCase struct {
 	missionRepo mission.MissionRepository
 	eventStore  EventStore
+	dispatcher  EventDispatcher
 }
 
 func NewOrchestrateMissionUseCase(
 	missionRepo mission.MissionRepository,
 	eventStore EventStore,
+	dispatcher EventDispatcher,
 ) *OrchestrateMissionUseCase {
 	return &OrchestrateMissionUseCase{
 		missionRepo: missionRepo,
 		eventStore:  eventStore,
+		dispatcher:  dispatcher,
 	}
 }
 
@@ -71,6 +75,14 @@ func (uc *OrchestrateMissionUseCase) Execute(ctx context.Context, req Orchestrat
 	for _, event := range agg.Events {
 		if err := uc.eventStore.Append(ctx, event); err != nil {
 			return nil, fmt.Errorf("append event: %w", err)
+		}
+	}
+
+	if uc.dispatcher != nil {
+		for _, event := range agg.Events {
+			if err := uc.dispatcher.Dispatch(ctx, event); err != nil {
+				fmt.Fprintf(os.Stderr, "WARNING: failed to dispatch event: %v\n", err)
+			}
 		}
 	}
 

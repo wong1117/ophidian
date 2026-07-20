@@ -1,9 +1,44 @@
 package common
 
-import "time"
+import (
+	"database/sql/driver"
+	"fmt"
+	"time"
+)
 
 type UTCTime struct {
 	time.Time
+}
+
+func (t UTCTime) Value() (driver.Value, error) {
+	return t.Time, nil
+}
+
+func (t *UTCTime) Scan(value interface{}) error {
+	if value == nil {
+		t.Time = time.Time{}
+		return nil
+	}
+	switch v := value.(type) {
+	case time.Time:
+		t.Time = v
+		return nil
+	case string:
+		parsed, err := time.Parse("2006-01-02 15:04:05.999999-07", v)
+		if err != nil {
+			parsed, err = time.Parse(time.RFC3339, v)
+			if err != nil {
+				parsed, err = time.Parse(time.RFC3339Nano, v)
+				if err != nil {
+					return err
+				}
+			}
+		}
+		t.Time = parsed
+		return nil
+	default:
+		return fmt.Errorf("cannot scan %T into UTCTime", value)
+	}
 }
 
 func Now() UTCTime {

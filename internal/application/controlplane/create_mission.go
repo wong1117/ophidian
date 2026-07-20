@@ -2,6 +2,8 @@ package controlplane
 
 import (
 	"context"
+	"log"
+
 	"github.com/ophidian/ophidian/internal/domain/common"
 	"github.com/ophidian/ophidian/internal/domain/mission"
 )
@@ -9,12 +11,18 @@ import (
 type CreateMissionUseCase struct {
 	missionRepo mission.MissionRepository
 	eventStore  EventStore
+	dispatcher  EventDispatcher
 }
 
-func NewCreateMissionUseCase(repo mission.MissionRepository, es EventStore) *CreateMissionUseCase {
+func NewCreateMissionUseCase(
+	repo mission.MissionRepository,
+	es EventStore,
+	dispatcher EventDispatcher,
+) *CreateMissionUseCase {
 	return &CreateMissionUseCase{
 		missionRepo: repo,
 		eventStore:  es,
+		dispatcher:  dispatcher,
 	}
 }
 
@@ -45,9 +53,17 @@ func (uc *CreateMissionUseCase) Execute(ctx context.Context, req mission.CreateM
 	}
 
 	for _, event := range agg.Events {
-	if err := uc.eventStore.Append(ctx, event); err != nil {
-		return nil, err
+		if err := uc.eventStore.Append(ctx, event); err != nil {
+			return nil, err
+		}
 	}
+
+	if uc.dispatcher != nil {
+		for _, event := range agg.Events {
+			if err := uc.dispatcher.Dispatch(ctx, event); err != nil {
+				log.Printf("WARNING: failed to dispatch event: %v", err)
+			}
+		}
 	}
 
 	return m, nil
