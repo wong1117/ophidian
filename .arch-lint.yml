@@ -1,0 +1,96 @@
+version: 3
+components:
+  domain_core:
+    in: internal/domain/common
+  domain_mission:
+    in: internal/domain/mission
+    mayDependOn:
+      - domain_core
+  domain_target:
+    in: internal/domain/target
+    mayDependOn:
+      - domain_core
+  domain_attackplan:
+    in: internal/domain/attackplan
+    mayDependOn:
+      - domain_core
+  domain_finding:
+    in: internal/domain/finding
+    mayDependOn:
+      - domain_core
+  domain_session:
+    in: internal/domain/session
+    mayDependOn:
+      - domain_core
+  app_control:
+    in: internal/application/controlplane
+    mayDependOn:
+      - domain_core
+      - domain_mission
+      - domain_target
+      - domain_attackplan
+      - domain_finding
+  app_ai:
+    in: internal/application/aiplane
+    mayDependOn:
+      - domain_core
+      - domain_attackplan
+      - domain_finding
+      - domain_target
+  app_execution:
+    in: internal/application/executionplane
+    mayDependOn:
+      - domain_core
+      - domain_target
+      - domain_finding
+      - domain_session
+  infra_persistence:
+    in: internal/infrastructure/persistence
+    mayDependOn:
+      - domain_core
+      - domain_mission
+      - domain_target
+      - domain_attackplan
+      - domain_finding
+      - domain_session
+  infra_messaging:
+    in: internal/infrastructure/messaging
+    mayDependOn:
+      - domain_core
+  infra_ai:
+    in: internal/infrastructure/ai
+    mayDependOn:
+      - domain_core
+      - domain_attackplan
+  infra_external:
+    in: internal/infrastructure/external
+    mayDependOn:
+      - domain_core
+  infra_web:
+    in: internal/infrastructure/web
+    mayDependOn:
+      - domain_core
+      - domain_mission
+      - domain_target
+      - domain_attackplan
+      - domain_finding
+  interfaces_acl:
+    in: internal/interfaces
+    mayDependOn:
+      - domain_core
+      - domain_mission
+      - domain_target
+      - domain_attackplan
+      - domain_finding
+      - domain_session
+
+dependencyRules:
+  - from: domain_*
+    to: app_*
+    errorMessage: "Domain layer cannot depend on Application layer"
+  - from: domain_*
+    to: infra_*
+    errorMessage: "Domain layer cannot depend on Infrastructure layer"
+  - from: app_*
+    to: infra_*
+    errorMessage: "Application layer cannot depend on Infrastructure layer"

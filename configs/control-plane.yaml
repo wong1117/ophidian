@@ -1,0 +1,29 @@
+control_plane:
+  name: "ophidian-control"
+  api:
+    host: "0.0.0.0"
+    port: 8443
+    tls:
+      cert: "/etc/ophidian/certs/server.crt"
+      key: "/etc/ophidian/certs/server.key"
+  auth:
+    jwt_secret: "${JWT_SECRET}"
+    rbac_policy: "/etc/ophidian/rbac.conf"
+    session_ttl: "24h"
+  workflow:
+    engine: "temporal"
+    temporal_host: "localhost:7233"
+    namespace: "ophidian"
+  scheduling:
+    max_concurrent_tasks: 10
+    default_timeout: "30m"
+    retry_policy:
+      max_attempts: 3
+      backoff: "exponential"
+      initial_interval: "5s"
+      max_interval: "5m"
+  audit:
+    event_store: "postgres"
+    log_level: "debug"
+    retention_days: 365
+    immutable: true

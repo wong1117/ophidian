@@ -1,0 +1,10 @@
+build/
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+.idea/
+.vscode/
+.DS_Store

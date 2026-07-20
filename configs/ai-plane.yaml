@@ -1,0 +1,78 @@
+ai_plane:
+  name: "ophidian-ai"
+
+  # Multi-Provider AI Configuration
+  # You can configure multiple providers; the system will use the first available one.
+  # Set FALLBACK: true to try the next provider if the current one fails.
+  ai_providers:
+    default: "ollama"
+    fallback: true
+    providers:
+      - type: "ollama"
+        model: "mixtral:8x7b"
+        base_url: "http://localhost:11434"
+        max_tokens: 4096
+        temperature: 0.3
+        top_p: 0.9
+        priority: 10
+
+      - type: "openai"
+        api_key: "${OPENAI_API_KEY}"
+        model: "gpt-4-turbo"
+        max_tokens: 4096
+        temperature: 0.3
+        timeout: 120
+        priority: 5
+
+      - type: "anthropic"
+        api_key: "${ANTHROPIC_API_KEY}"
+        model: "claude-3-opus-20240229"
+        max_tokens: 4096
+        temperature: 0.3
+        timeout: 120
+        priority: 4
+
+      - type: "gemini"
+        api_key: "${GEMINI_API_KEY}"
+        model: "gemini-pro"
+        max_tokens: 4096
+        temperature: 0.3
+        timeout: 120
+        priority: 3
+
+  # Legacy Ollama config (kept for backward compat)
+  ollama:
+    host: "localhost"
+    port: 11434
+    models:
+      reasoning: "mixtral:8x7b"
+      code: "codellama:34b"
+      embedding: "nomic-embed-text"
+    timeout: "120s"
+    max_tokens: 4096
+
+  circuit_breaker:
+    failure_threshold: 5
+    success_threshold: 3
+    timeout: "60s"
+
+  reasoning:
+    engine: "ornith"
+    max_iterations: 10
+    temperature: 0.3
+    top_p: 0.9
+    top_k: 40
+
+  vector_db:
+    type: "qdrant"
+    host: "localhost"
+    port: 6333
+    collection: "attack_intel"
+    dimension: 768
+    distance: "Cosine"
+
+  memory:
+    short_term: "redis://localhost:6379/1"
+    short_term_ttl: "1h"
+    long_term: "postgres://localhost/ophidian"
+    vector: "qdrant://localhost:6333"

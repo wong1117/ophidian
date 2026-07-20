@@ -1,0 +1,32 @@
+execution_plane:
+  name: "ophidian-execution"
+  recon:
+    rate_limit: 1000
+    timeout: "30s"
+    modules:
+      - "passive"
+      - "active"
+      - "osint"
+    concurrent_scans: 50
+  exploit:
+    metasploit_rpc: "localhost:55553"
+    metasploit_user: "msf"
+    metasploit_pass: "${MSF_PASSWORD}"
+    payload_encoding: "x86/shikata_ga_nai"
+    payload_iterations: 5
+    max_payload_size: "10MB"
+  circuit_breaker:
+    failure_threshold: 3
+    timeout: "30s"
+  post_exploit:
+    lateral_movement: true
+    persistence: true
+    data_exfil: true
+    covert_channels: ["dns", "icmp"]
+    cleanup_on_failure: true
+  agent:
+    heartbeat_interval: "30s"
+    max_reconnect_attempts: 10
+    reconnect_backoff: "exponential"
+    encryption: "chacha20-poly1305"
+    key_rotation: "1h"

@@ -1,0 +1,203 @@
+ophidian:
+  version: "0.1.0"
+  environment: "development"
+
+control_plane:
+  name: "ophidian-control"
+  api:
+    host: "0.0.0.0"
+    port: 8443
+  auth:
+    jwt_secret: "${JWT_SECRET}"
+    session_ttl: "24h"
+  scheduling:
+    max_concurrent_tasks: 10
+    default_timeout: "30m"
+  audit:
+    event_store: "postgres"
+    retention_days: 365
+
+  # Ghost Collaboration
+  collaboration:
+    enabled: true
+    max_operators: 10
+    history_retention: "24h"
+
+  # Dry-Run / Blast Radius
+  dry_run:
+    enabled: true
+    require_approval: true
+    min_risk_for_dry_run: "MEDIUM"
+
+ai_plane:
+  name: "ophidian-ai"
+
+  # Multi-Provider AI
+  ai_providers:
+    default: "ollama"
+    fallback: true
+    providers:
+      - type: "ollama"
+        model: "mixtral:8x7b"
+        base_url: "http://localhost:11434"
+        max_tokens: 4096
+        temperature: 0.3
+        priority: 10
+      - type: "openai"
+        api_key: "${OPENAI_API_KEY}"
+        model: "gpt-4-turbo"
+        max_tokens: 4096
+        temperature: 0.3
+        timeout: 120
+        priority: 5
+      - type: "anthropic"
+        api_key: "${ANTHROPIC_API_KEY}"
+        model: "claude-3-opus-20240229"
+        max_tokens: 4096
+        temperature: 0.3
+        timeout: 120
+        priority: 4
+      - type: "gemini"
+        api_key: "${GEMINI_API_KEY}"
+        model: "gemini-pro"
+        max_tokens: 4096
+        temperature: 0.3
+        timeout: 120
+        priority: 3
+
+  # Internal RAG Memory
+  rag_memory:
+    enabled: true
+    max_entries: 10000
+    ttl: "90d"
+    auto_cleanup: true
+    retrieval_limit: 20
+    context_window: 5
+
+  # Devil's Advocate
+  devils_advocate:
+    enabled: true
+    min_score: 0.3
+    always_review_high_risk: true
+    max_alternatives: 3
+
+  # Dynamic TTP Adaptation
+  ttp_adaptation:
+    enabled: true
+    adapt_on_failure: true
+    reorder_on_failure: true
+    max_adaptations: 5
+
+  # AI Copilot
+  ai_copilot:
+    enabled: true
+    auto_approve_low_risk: false
+    max_chain_steps: 20
+
+  circuit_breaker:
+    failure_threshold: 5
+    success_threshold: 3
+    timeout: "60s"
+  vector_db:
+    type: "qdrant"
+    host: "localhost"
+    port: 6333
+
+execution_plane:
+  name: "ophidian-execution"
+
+  recon:
+    rate_limit: 1000
+    timeout: "30s"
+    concurrent_scans: 50
+
+  exploit:
+    payload_encoding: "x86/shikata_ga_nai"
+    max_payload_size: "10MB"
+
+  post_exploit:
+    lateral_movement: true
+    persistence: true
+    data_exfil: true
+
+  # Living-off-the-Land
+  lotl_biasing:
+    enabled: true
+    prefer_lotl: true
+    min_detection_risk: 5
+    fallback_to_custom: true
+
+  # Covert Channel
+  covert_channel:
+    enabled: true
+    default_channel: "https"
+    jitter_min: "100ms"
+    jitter_max: "5s"
+    morph_enabled: true
+    encrypt: true
+    channels:
+      - "dns"
+      - "icmp"
+      - "https"
+      - "ms_update"
+      - "ga_traffic"
+
+  # Execution Jitter
+  execution_jitter:
+    enabled: true
+    min_delay: "500ms"
+    max_delay: "5s"
+    sleep_masking: true
+    sleep_mask_type: "api_call"
+    timing_randomize: true
+
+  # In-Memory Execution
+  memory_execution:
+    enabled: true
+    methods:
+      - "reflective_dll"
+      - "process_hollowing"
+      - "shellcode_injection"
+    default_method: "reflective_dll"
+
+  # Stealth Persistence
+  persistence_modules:
+    enabled: true
+    max_stealth_level: 10
+    auto_cleanup_on_exit: true
+    windows:
+      - "wmi_event_subscription"
+      - "com_hijacking"
+      - "scheduled_task"
+    linux:
+      - "ld_preload"
+      - "ssh_authorized_key"
+      - "cron_job"
+
+  # Auto-Cleanup
+  auto_cleanup:
+    enabled: true
+    cleanup_on_disconnect: true
+    cleanup_targets:
+      - "event_logs"
+      - "temp_files"
+      - "command_history"
+      - "processes"
+      - "registry"
+
+  # Hard Scope Enforcement
+  network_fencing:
+    enabled: true
+    strict_mode: true
+    block_out_of_scope: true
+    log_violations: true
+
+  # Playbook Registry
+  playbooks:
+    enabled: true
+    auto_resolve: true
+    snippet_prefix: "@"
+
+  agent:
+    heartbeat_interval: "30s"
+    encryption: "chacha20-poly1305"

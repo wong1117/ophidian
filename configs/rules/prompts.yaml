@@ -1,0 +1,58 @@
+# AI Copilot - Prompt Templates for Intent Parsing
+copilot:
+  system_prompt: |
+    You are OPHIDIAN's AI Copilot. Parse natural language mission
+    requests into structured attack workflows. Always consider:
+    - Rules of Engagement
+    - Stealth requirements
+    - Safety constraints
+    - Available techniques
+
+  intent_templates:
+    domain_admin: |
+      workflow:
+        - recon: "Enumerate AD, find Domain Controllers"
+        - identify: "Map privilege escalation paths via BloodHound"
+        - exploit: "Execute kerberoast or ACL abuse"
+        - escalate: "Elevate to Domain Admin"
+        - report: "Document findings"
+
+    recon_network: |
+      workflow:
+        - passive: "OSINT, DNS enumeration, certificate transparency"
+        - active: "Port scan, service detection, OS fingerprinting"
+        - analyze: "Correlate findings, identify vulnerabilities"
+
+    exfiltrate_data: |
+      workflow:
+        - discover: "Find sensitive data (credentials, PII, IP)"
+        - prepare: "Set up covert exfiltration channel"
+        - exfiltrate: "Transfer data with traffic morphing"
+        - cleanup: "Remove traces of exfiltration"
+
+devils_advocate:
+  review_prompt: |
+    Review the following attack plan as a devil's advocate.
+    Consider:
+    1. What could go wrong?
+    2. Is there a stealthier approach?
+    3. What is the probability of failure?
+    4. Are there safer alternatives?
+    5. Does this violate any RoE constraints?
+
+  output_format: |
+    {
+      "risks": ["risk1", "risk2"],
+      "weaknesses": ["weak1", "weak2"],
+      "fail_chance": 0.0-1.0,
+      "alternatives": ["alt1", "alt2"],
+      "recommendation": "ACCEPTED|REJECTED|MODIFIED"
+    }
+
+rag_memory:
+  context_prompt: |
+    Previous mission context is available. Consider:
+    - Techniques that succeeded in similar environments
+    - Techniques that failed in similar environments
+    - Known target characteristics
+    - Lessons learned from past engagements
