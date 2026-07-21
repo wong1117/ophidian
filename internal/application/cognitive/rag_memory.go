@@ -6,64 +6,34 @@ import (
 	"github.com/ophidian/ophidian/internal/domain/common"
 )
 
-type MemoryEntryType string
-
-const (
-	MemoryMissionSuccess MemoryEntryType = "MISSION_SUCCESS"
-	MemoryMissionFailure MemoryEntryType = "MISSION_FAILURE"
-	MemoryTechniqueOk    MemoryEntryType = "TECHNIQUE_OK"
-	MemoryTechniqueFail  MemoryEntryType = "TECHNIQUE_FAIL"
-	MemoryEnvironment   MemoryEntryType = "ENVIRONMENT"
-	MemoryTargetProfile MemoryEntryType = "TARGET_PROFILE"
-)
-
-type MemoryEntry struct {
-	ID           common.ID
-	Type         MemoryEntryType
-	Content      string
-	Tags         []string
-	MissionID    string
-	TargetOS     string
-	TargetEnv    string
-	Technique    string
-	CVE          string
-	Severity     string
-	Confidence   float64
-	Success      bool
-	Context      map[string]interface{}
-	Embedding    []float32
-	CreatedAt    time.Time
-	ExpiresAt    *time.Time
-}
-
 type RAGStore interface {
-	SaveMemory(ctx context.Context, entry *MemoryEntry) error
-	SearchMemory(ctx context.Context, query string, tags []string, limit int) ([]MemoryEntry, error)
-	SearchByTechnique(ctx context.Context, technique string) ([]MemoryEntry, error)
-	SearchByEnvironment(ctx context.Context, os, env string) ([]MemoryEntry, error)
-	GetRecentFailures(ctx context.Context, limit int) ([]MemoryEntry, error)
-	GetRecentSuccesses(ctx context.Context, limit int) ([]MemoryEntry, error)
+	SaveMemory(ctx context.Context, entry *common.MemoryEntry) error
+	SearchMemory(ctx context.Context, query string, tags []string, limit int) ([]common.MemoryEntry, error)
+	SearchByTechnique(ctx context.Context, technique string) ([]common.MemoryEntry, error)
+	SearchByEnvironment(ctx context.Context, os, env string) ([]common.MemoryEntry, error)
+	GetRecentFailures(ctx context.Context, limit int) ([]common.MemoryEntry, error)
+	GetRecentSuccesses(ctx context.Context, limit int) ([]common.MemoryEntry, error)
 	DeleteExpired(ctx context.Context) error
 }
 
 type RAGMemory struct {
 	store      RAGStore
-	embedder   Embedder
-	contextBuf []MemoryEntry
+	embedder   common.Embedder
+	contextBuf []common.MemoryEntry
 }
 
-func NewRAGMemory(store RAGStore, embedder Embedder) *RAGMemory {
+func NewRAGMemory(store RAGStore, embedder common.Embedder) *RAGMemory {
 	return &RAGMemory{
 		store:      store,
 		embedder:   embedder,
-		contextBuf: make([]MemoryEntry, 0),
+		contextBuf: make([]common.MemoryEntry, 0),
 	}
 }
 
 func (m *RAGMemory) RecordMissionSuccess(ctx context.Context, missionID, technique, targetOS, targetEnv string, tags []string) error {
-	entry := &MemoryEntry{
+	entry := &common.MemoryEntry{
 		ID:        common.NewID(),
-		Type:      MemoryMissionSuccess,
+		Type:      common.MemoryMissionSuccess,
 		Content:   "Mission successful using technique: " + technique,
 		Tags:      tags,
 		MissionID: missionID,
@@ -85,9 +55,9 @@ func (m *RAGMemory) RecordMissionSuccess(ctx context.Context, missionID, techniq
 }
 
 func (m *RAGMemory) RecordTechniqueFailure(ctx context.Context, missionID, technique, targetOS, targetEnv, reason string, tags []string) error {
-	entry := &MemoryEntry{
+	entry := &common.MemoryEntry{
 		ID:        common.NewID(),
-		Type:      MemoryTechniqueFail,
+		Type:      common.MemoryTechniqueFail,
 		Content:   "Technique failed: " + technique + " reason: " + reason,
 		Tags:      tags,
 		MissionID: missionID,
@@ -107,9 +77,9 @@ func (m *RAGMemory) RecordTechniqueFailure(ctx context.Context, missionID, techn
 }
 
 func (m *RAGMemory) RecordEnvironment(ctx context.Context, missionID, os, env string, details map[string]interface{}) error {
-	entry := &MemoryEntry{
+	entry := &common.MemoryEntry{
 		ID:        common.NewID(),
-		Type:      MemoryEnvironment,
+		Type:      common.MemoryEnvironment,
 		Content:   "Environment: " + os + "/" + env,
 		Tags:      []string{os, env},
 		MissionID: missionID,
@@ -127,7 +97,7 @@ func (m *RAGMemory) RecordEnvironment(ctx context.Context, missionID, os, env st
 }
 
 func (m *RAGMemory) GetContextForPlanning(ctx context.Context, targetOS, targetEnv string, plannedTechnique string) (string, error) {
-	entries := make([]MemoryEntry, 0)
+	entries := make([]common.MemoryEntry, 0)
 
 	envResults, err := m.store.SearchByEnvironment(ctx, targetOS, targetEnv)
 	if err == nil {

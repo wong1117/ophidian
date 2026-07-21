@@ -6,32 +6,32 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ophidian/ophidian/internal/application/cognitive"
+	"github.com/ophidian/ophidian/internal/domain/common"
 )
 
 type MemoryStore struct {
 	mu      sync.RWMutex
-	entries []cognitive.MemoryEntry
+	entries []common.MemoryEntry
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		entries: make([]cognitive.MemoryEntry, 0),
+		entries: make([]common.MemoryEntry, 0),
 	}
 }
 
-func (s *MemoryStore) SaveMemory(ctx context.Context, entry *cognitive.MemoryEntry) error {
+func (s *MemoryStore) SaveMemory(ctx context.Context, entry *common.MemoryEntry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.entries = append(s.entries, *entry)
 	return nil
 }
 
-func (s *MemoryStore) SearchMemory(ctx context.Context, query string, tags []string, limit int) ([]cognitive.MemoryEntry, error) {
+func (s *MemoryStore) SearchMemory(ctx context.Context, query string, tags []string, limit int) ([]common.MemoryEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var results []cognitive.MemoryEntry
+	var results []common.MemoryEntry
 	for _, e := range s.entries {
 		if !matchTags(e.Tags, tags) {
 			continue
@@ -47,11 +47,11 @@ func (s *MemoryStore) SearchMemory(ctx context.Context, query string, tags []str
 	return results, nil
 }
 
-func (s *MemoryStore) SearchByTechnique(ctx context.Context, technique string) ([]cognitive.MemoryEntry, error) {
+func (s *MemoryStore) SearchByTechnique(ctx context.Context, technique string) ([]common.MemoryEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var results []cognitive.MemoryEntry
+	var results []common.MemoryEntry
 	for _, e := range s.entries {
 		if strings.EqualFold(e.Technique, technique) {
 			results = append(results, e)
@@ -60,11 +60,11 @@ func (s *MemoryStore) SearchByTechnique(ctx context.Context, technique string) (
 	return results, nil
 }
 
-func (s *MemoryStore) SearchByEnvironment(ctx context.Context, os, env string) ([]cognitive.MemoryEntry, error) {
+func (s *MemoryStore) SearchByEnvironment(ctx context.Context, os, env string) ([]common.MemoryEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var results []cognitive.MemoryEntry
+	var results []common.MemoryEntry
 	for _, e := range s.entries {
 		if strings.EqualFold(e.TargetOS, os) && strings.EqualFold(e.TargetEnv, env) {
 			results = append(results, e)
@@ -73,11 +73,11 @@ func (s *MemoryStore) SearchByEnvironment(ctx context.Context, os, env string) (
 	return results, nil
 }
 
-func (s *MemoryStore) GetRecentFailures(ctx context.Context, limit int) ([]cognitive.MemoryEntry, error) {
+func (s *MemoryStore) GetRecentFailures(ctx context.Context, limit int) ([]common.MemoryEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var results []cognitive.MemoryEntry
+	var results []common.MemoryEntry
 	for i := len(s.entries) - 1; i >= 0 && len(results) < limit; i-- {
 		if !s.entries[i].Success {
 			results = append(results, s.entries[i])
@@ -86,11 +86,11 @@ func (s *MemoryStore) GetRecentFailures(ctx context.Context, limit int) ([]cogni
 	return results, nil
 }
 
-func (s *MemoryStore) GetRecentSuccesses(ctx context.Context, limit int) ([]cognitive.MemoryEntry, error) {
+func (s *MemoryStore) GetRecentSuccesses(ctx context.Context, limit int) ([]common.MemoryEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var results []cognitive.MemoryEntry
+	var results []common.MemoryEntry
 	for i := len(s.entries) - 1; i >= 0 && len(results) < limit; i-- {
 		if s.entries[i].Success {
 			results = append(results, s.entries[i])

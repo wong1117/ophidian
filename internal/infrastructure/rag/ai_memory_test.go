@@ -73,10 +73,10 @@ func setupService() (*AIMemoryService, *mockVectorStore) {
 	return NewAIMemoryService(embedder, vectors), vectors
 }
 
-func memEntry(id, content string, tags []string, technique string, success bool) *cognitive.MemoryEntry {
-	return &cognitive.MemoryEntry{
+func memEntry(id, content string, tags []string, technique string, success bool) *common.MemoryEntry {
+	return &common.MemoryEntry{
 		ID:         common.ID(id),
-		Type:       cognitive.MemoryTechniqueOk,
+		Type:       common.MemoryTechniqueOk,
 		Content:    content,
 		Tags:       tags,
 		Technique:  technique,
@@ -316,8 +316,8 @@ func TestHasAnyTag(t *testing.T) {
 }
 
 func TestBuildPayload(t *testing.T) {
-	entry := &cognitive.MemoryEntry{
-		Type:       cognitive.MemoryTechniqueOk,
+	entry := &common.MemoryEntry{
+		Type:       common.MemoryTechniqueOk,
 		Content:    "test",
 		MissionID:  "m1",
 		Technique:  "T1003",

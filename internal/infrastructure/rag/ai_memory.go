@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ophidian/ophidian/internal/application/cognitive"
 	"github.com/ophidian/ophidian/internal/domain/common"
 )
 
@@ -24,22 +23,22 @@ type VectorResult struct {
 }
 
 type AIMemoryService struct {
-	embedder cognitive.Embedder
+	embedder common.Embedder
 	vectors  VectorStorePort
 
 	mu      sync.RWMutex
-	entries map[string]*cognitive.MemoryEntry
+	entries map[string]*common.MemoryEntry
 }
 
-func NewAIMemoryService(embedder cognitive.Embedder, vectors VectorStorePort) *AIMemoryService {
+func NewAIMemoryService(embedder common.Embedder, vectors VectorStorePort) *AIMemoryService {
 	return &AIMemoryService{
 		embedder: embedder,
 		vectors:  vectors,
-		entries:  make(map[string]*cognitive.MemoryEntry),
+		entries:  make(map[string]*common.MemoryEntry),
 	}
 }
 
-func (s *AIMemoryService) SaveMemory(ctx context.Context, entry *cognitive.MemoryEntry) error {
+func (s *AIMemoryService) SaveMemory(ctx context.Context, entry *common.MemoryEntry) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("save memory: %w", err)
 	}
@@ -69,7 +68,7 @@ func (s *AIMemoryService) SaveMemory(ctx context.Context, entry *cognitive.Memor
 	return nil
 }
 
-func (s *AIMemoryService) SearchMemory(ctx context.Context, query string, tags []string, limit int) ([]cognitive.MemoryEntry, error) {
+func (s *AIMemoryService) SearchMemory(ctx context.Context, query string, tags []string, limit int) ([]common.MemoryEntry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("search memory: %w", err)
 	}
@@ -99,7 +98,7 @@ func (s *AIMemoryService) SearchMemory(ctx context.Context, query string, tags [
 		filtered = filtered[:limit]
 	}
 
-	entries := make([]cognitive.MemoryEntry, 0, len(filtered))
+	entries := make([]common.MemoryEntry, 0, len(filtered))
 	for _, r := range filtered {
 		e := s.mapResultToEntry(r)
 		if e != nil {
@@ -110,7 +109,7 @@ func (s *AIMemoryService) SearchMemory(ctx context.Context, query string, tags [
 	return entries, nil
 }
 
-func (s *AIMemoryService) SearchByTechnique(ctx context.Context, technique string) ([]cognitive.MemoryEntry, error) {
+func (s *AIMemoryService) SearchByTechnique(ctx context.Context, technique string) ([]common.MemoryEntry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("search by technique: %w", err)
 	}
@@ -118,7 +117,7 @@ func (s *AIMemoryService) SearchByTechnique(ctx context.Context, technique strin
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var results []cognitive.MemoryEntry
+	var results []common.MemoryEntry
 	for _, e := range s.entries {
 		if strings.EqualFold(e.Technique, technique) {
 			results = append(results, *e)
@@ -127,7 +126,7 @@ func (s *AIMemoryService) SearchByTechnique(ctx context.Context, technique strin
 	return results, nil
 }
 
-func (s *AIMemoryService) SearchByEnvironment(ctx context.Context, os, env string) ([]cognitive.MemoryEntry, error) {
+func (s *AIMemoryService) SearchByEnvironment(ctx context.Context, os, env string) ([]common.MemoryEntry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("search by environment: %w", err)
 	}
@@ -135,7 +134,7 @@ func (s *AIMemoryService) SearchByEnvironment(ctx context.Context, os, env strin
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var results []cognitive.MemoryEntry
+	var results []common.MemoryEntry
 	for _, e := range s.entries {
 		if strings.EqualFold(e.TargetOS, os) && strings.EqualFold(e.TargetEnv, env) {
 			results = append(results, *e)
@@ -144,7 +143,7 @@ func (s *AIMemoryService) SearchByEnvironment(ctx context.Context, os, env strin
 	return results, nil
 }
 
-func (s *AIMemoryService) GetRecentFailures(ctx context.Context, limit int) ([]cognitive.MemoryEntry, error) {
+func (s *AIMemoryService) GetRecentFailures(ctx context.Context, limit int) ([]common.MemoryEntry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("get recent failures: %w", err)
 	}
@@ -153,7 +152,7 @@ func (s *AIMemoryService) GetRecentFailures(ctx context.Context, limit int) ([]c
 	defer s.mu.RUnlock()
 
 	all := s.sortedByTime()
-	var results []cognitive.MemoryEntry
+	var results []common.MemoryEntry
 	for _, e := range all {
 		if !e.Success && len(results) < limit {
 			results = append(results, *e)
@@ -162,7 +161,7 @@ func (s *AIMemoryService) GetRecentFailures(ctx context.Context, limit int) ([]c
 	return results, nil
 }
 
-func (s *AIMemoryService) GetRecentSuccesses(ctx context.Context, limit int) ([]cognitive.MemoryEntry, error) {
+func (s *AIMemoryService) GetRecentSuccesses(ctx context.Context, limit int) ([]common.MemoryEntry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("get recent successes: %w", err)
 	}
@@ -171,7 +170,7 @@ func (s *AIMemoryService) GetRecentSuccesses(ctx context.Context, limit int) ([]
 	defer s.mu.RUnlock()
 
 	all := s.sortedByTime()
-	var results []cognitive.MemoryEntry
+	var results []common.MemoryEntry
 	for _, e := range all {
 		if e.Success && len(results) < limit {
 			results = append(results, *e)
@@ -233,12 +232,12 @@ func (s *AIMemoryService) filterByTags(results []VectorResult, tags []string) []
 	return filtered
 }
 
-func (s *AIMemoryService) searchByTags(ctx context.Context, tags []string, limit int) ([]cognitive.MemoryEntry, error) {
+func (s *AIMemoryService) searchByTags(ctx context.Context, tags []string, limit int) ([]common.MemoryEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	all := s.sortedByTime()
-	var results []cognitive.MemoryEntry
+	var results []common.MemoryEntry
 	for _, e := range all {
 		if len(tags) == 0 || hasAnyTag(e.Tags, tags) {
 			results = append(results, *e)
@@ -250,8 +249,8 @@ func (s *AIMemoryService) searchByTags(ctx context.Context, tags []string, limit
 	return results, nil
 }
 
-func (s *AIMemoryService) sortedByTime() []*cognitive.MemoryEntry {
-	all := make([]*cognitive.MemoryEntry, 0, len(s.entries))
+func (s *AIMemoryService) sortedByTime() []*common.MemoryEntry {
+	all := make([]*common.MemoryEntry, 0, len(s.entries))
 	for _, e := range s.entries {
 		all = append(all, e)
 	}
@@ -261,7 +260,7 @@ func (s *AIMemoryService) sortedByTime() []*cognitive.MemoryEntry {
 	return all
 }
 
-func (s *AIMemoryService) mapResultToEntry(result VectorResult) *cognitive.MemoryEntry {
+func (s *AIMemoryService) mapResultToEntry(result VectorResult) *common.MemoryEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -274,7 +273,7 @@ func (s *AIMemoryService) mapResultToEntry(result VectorResult) *cognitive.Memor
 	return &cpy
 }
 
-func buildPayload(entry *cognitive.MemoryEntry) map[string]interface{} {
+func buildPayload(entry *common.MemoryEntry) map[string]interface{} {
 	p := map[string]interface{}{
 		"type":       string(entry.Type),
 		"content":    entry.Content,

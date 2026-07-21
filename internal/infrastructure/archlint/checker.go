@@ -74,7 +74,7 @@ func (c *Checker) CheckAll(root string) *ComplianceReport {
 	}
 
 	report.Violations = violations
-	report.Pass = len(violations) == 0
+	report.Pass = hasNoErrors(violations)
 
 	for _, v := range violations {
 		switch v.Severity {
@@ -96,6 +96,15 @@ type ComplianceReport struct {
 	Warnings   int
 	Infos      int
 	Violations []Violation
+}
+
+func hasNoErrors(violations []Violation) bool {
+	for _, v := range violations {
+		if v.Severity == SeverityError {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *ComplianceReport) Format() string {

@@ -131,7 +131,7 @@ Automated kill chain reporting, executive summaries, PoC generation, OPSEC clean
 
 1. **Docker Hub unreachable** — cannot pull NATS or Redis images. Workaround: HTTP-based dispatcher bridge.
 2. **Nmap `--host-timeout` aggressive** — 15s timeout may cut off service detection on slow targets.
-3. **Pre-existing build errors** — Saga, AI, messaging/nats, crypto, network packages fail `go build ./...`. Tracked in Era 7 Phase 7.4.
+3. **Pre-existing APPLICATION_PURITY warnings** — 4 use cases import `internal/interfaces/dto` (warnings only, archlint passes).
 4. **TUI freeze** — Bubble Tea input blocking. Tracked in Era 4 Phase 4.3.
 5. **UTCTime Scan interface** — Custom type works with pgx via `driver.Valuer` + custom `Scan`; not implementing standard `sql.Scanner`.
 
