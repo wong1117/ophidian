@@ -19,7 +19,7 @@ type NmapRunner struct {
 func NewNmapRunner() *NmapRunner {
 	return &NmapRunner{
 		binPath: "nmap",
-		args:    []string{"-sV", "-Pn", "--top-ports", "100"},
+		args:    []string{"-sV", "-Pn", "--top-ports", "100", "--host-timeout", "15s"},
 	}
 }
 

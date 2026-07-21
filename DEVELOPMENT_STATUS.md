@@ -69,7 +69,7 @@ Building the Minimum Viable Attack Chain (MVAC) in 4 steps:
 |------|--------|-------------|
 | 1 | Done | ReconCompletedEvent domain definition (`internal/domain/mission/recon_events.go`) |
 | 2 | Done | NmapRunner infrastructure adapter (`internal/infrastructure/runner/nmap_runner.go`) |
-| 3 | Pending | Wire NmapRunner into Worker recon handler |
+| 3 | Done | Wire NmapRunner into Worker recon handler |
 | 4 | Pending | End-to-end test: curl POST mission → Worker runs Nmap → ReconCompletedEvent stored |
 
 ### Step 1 — ReconCompletedEvent (Done)
@@ -81,8 +81,16 @@ Building the Minimum Viable Attack Chain (MVAC) in 4 steps:
 - File: `internal/infrastructure/runner/nmap_runner.go`
 - Interface: `Runner` with `Run(ctx context.Context, target string) (string, error)`
 - Implementation: `NmapRunner` using `exec.CommandContext`
-- Command: `nmap -sV -Pn --top-ports 100 <target>`
+- Command: `nmap -sV -Pn --top-ports 100 --host-timeout 15s <target>`
 - Validates: empty target, missing binary, context cancellation
+
+### Step 3 — NmapRunner Wired into Worker (Done)
+- Worker struct extended with `runner.Runner` field
+- `NewWorker` accepts `runner.Runner` parameter
+- `handleMissionStarted` iterates targets and calls `runReconForTarget()` for each
+- Each target scan runs in a 60s timeout context via `w.runner.Run(ctx, target)`
+- `ReconCompletedEvent` constructed from scan output with `common.TaskStatus` (SUCCESS/FAILED)
+- Verified: 17s scan of 127.0.0.1 produced 351 bytes output with SSH + PostgreSQL ports detected
 
 ## Known Issues
 

@@ -1,56 +1,366 @@
-# AGENTS.md — Ophidian Development Rules
+# AGENTS.md — Ophidian3 Development Guide
 
-## Stack
+## Project Overview
 
-Go 1.22, Clean Architecture, Domain-Driven Design, CQRS, Event Sourcing, Hexagonal (Ports & Adapters). PostgreSQL via pgxpool. HTTP via Echo v4.
+Ophidian3 is an internal, solo-developer AI Offensive Security Platform.
 
-## Three-Plane Architecture (Non-Negotiable)
+Primary goals:
 
-| Plane | Responsibility | Must NOT |
-|-------|---------------|----------|
-| Control Plane | REST API, orchestration, event dispatch | Execute exploits, make AI decisions |
-| Execution Plane (Worker) | Recon, exploit, post-exploit, report | Decide mission strategy |
-| AI Plane | Recommendations, plan generation | Issue commands autonomously |
+- Production-first engineering
+- Clean Architecture
+- Domain Driven Design
+- CQRS
+- Event Sourcing
+- Hexagonal Architecture
+- Three Plane Architecture
 
-AI is always an Advisor, never a Commander. The AI Plane proposes; the Control Plane decides; the Execution Plane executes.
+This project prioritizes architecture, correctness, maintainability, and stealth over rapid feature development. This is a personal operational tool, not a commercial SaaS.
 
-## Domain Events & Event Sourcing
+---
 
-Every state change MUST produce a domain event. All events implement `DomainEvent` interface: `EventID()`, `EventType()`, `OccurredAt()`, `AggregateID()`, `Version()`.
+# Working Agreement
 
-Events are persisted to PostgreSQL `events` table. The event store is the single source of truth. Aggregate state is reconstructed by replaying events.
+Before making any code changes:
 
-## Code Organization
+- Understand the existing implementation.
+- Prefer extending existing components over rewriting.
+- Preserve backward compatibility unless explicitly instructed.
+- Do not refactor unrelated code.
+- Ask for clarification if architecture intent is unclear.
 
-| Directory | Purpose |
-|-----------|---------|
-| `cmd/` | Binary entry points (server, worker, cli) |
-| `internal/domain/` | Aggregates, entities, value objects, domain events, repository interfaces |
-| `internal/application/` | Use cases, application services, sagas |
-| `internal/infrastructure/` | Adapters: persistence, messaging, runner, web, queue |
-| `internal/interfaces/` | DTOs, cross-plane event mappers |
+---
 
-## Dependency Rule
+# When uncertain:
 
-Domain depends on nothing. Application depends on domain. Infrastructure depends on application + domain. Interfaces bridge planes.
+- Read the surrounding code first.
+- Search for existing implementations.
+- Reuse established patterns.
+- Avoid introducing new abstractions unless justified.
 
-## Error Handling
+---
 
-- Domain errors use sentinel errors in `internal/domain/common/errors.go`
-- Infrastructure wraps domain errors: `fmt.Errorf("save mission: %w", err)`
-- HTTP handlers return domain errors directly; Echo error handler maps them to status codes
-- Worker logs warnings on non-fatal errors, retries with backoff on transient failures
+# When responding:
 
-## Testing
+- Be concise.
+- Reference package/file/function.
+- Explain reasoning.
+- Avoid unnecessary rewrites.
+- Preserve project style.
 
-- Domain: unit tests for invariants (`go test ./internal/domain/...`)
-- Infrastructure: integration tests for adapters (PostgreSQL, runner)
-- Worker: verify event consumption via log output
-- Server: verify API contracts via `curl` against running instance
+---
 
-## Workflow
+# Technology Stack
 
-1. Read `DEVELOPMENT_STATUS.md` for current phase
-2. Read `ARCHITECTURE.md` for code location
-3. Run `go build ./cmd/...` and `go vet ./cmd/...` before committing
-4. Run `go test ./internal/domain/...` for domain invariant verification
+- Go 1.22+
+- PostgreSQL (pgxpool)
+- Echo v4
+- Redis (optional cache/queue)
+- NATS (internal event bus)
+- Ollama / DeepSeek (Local/Cloud LLM)
+- YAML configuration
+- Bubble Tea (TUI)
+- Cobra (CLI)
+
+---
+
+# Architecture Principles (Non-Negotiable)
+
+Follow these principles at all times.
+
+- Clean Architecture
+- Domain Driven Design
+- CQRS
+- Event Sourcing
+- Ports and Adapters
+- Dependency Inversion
+- Composition over inheritance
+
+Never violate these principles.
+
+---
+
+# Three Plane Architecture
+
+## Control Plane
+
+Responsible for:
+
+- REST API
+- TUI Dashboard
+- Mission orchestration
+- Policy and RoE (Rules of Engagement) validation
+- Event dispatch
+- Workflow coordination
+
+Must NEVER:
+
+- Execute exploits
+- Run scanners
+- Make autonomous AI decisions
+
+## Execution Plane
+
+Responsible for:
+
+- Recon (Nmap, Chromedp)
+- Exploitation
+- Tool execution
+- Post exploitation
+- Reporting
+
+Must NEVER:
+
+- Decide strategy
+- Change mission objectives
+- Bypass RoE without explicit Control Plane approval
+
+## AI Plane
+
+Responsible for:
+
+- Recommendations
+- Planning
+- Ranking
+- Summarization
+- Context reasoning
+- Memory retrieval (via chromem-go)
+
+Must NEVER:
+
+- Execute tools
+- Execute commands
+- Modify infrastructure
+- Bypass policy
+
+AI is always an Advisor.
+
+Never a Commander.
+
+---
+
+# Event Sourcing
+
+Every state transition MUST produce a Domain Event.
+
+The Event Store (PostgreSQL) is the single source of truth.
+
+Aggregate state is reconstructed by replaying events.
+
+Never mutate aggregate state outside aggregate methods.
+
+Never bypass Event Store.
+
+---
+
+# Dependency Rules
+
+Dependency direction:
+
+Domain
+
+down to
+
+Application
+
+down to
+
+Infrastructure
+
+down to
+
+Interfaces (cmd/web)
+
+Never reverse dependencies.
+
+Domain must never import Application or Infrastructure.
+
+Application must never depend on Infrastructure implementations directly (use interfaces).
+
+Infrastructure implements Application interfaces.
+
+---
+
+# Repository Rules
+
+Repositories interfaces belong to Domain.
+
+Implementations belong to Infrastructure (e.g., postgres package).
+
+Never expose database types (like pgx.Rows) outside Infrastructure.
+
+---
+
+# Coding Guidelines
+
+Prefer:
+
+- Composition
+- Small interfaces
+- Explicit constructors
+- Context propagation
+- Wrapped errors
+- Immutable value objects
+
+Avoid:
+
+- Global state
+- Panic
+- Reflection unless strictly necessary
+- Hidden side effects
+- God objects
+- Premature optimization
+
+---
+
+# Error Handling
+
+Wrap infrastructure errors using fmt.Errorf("context: %w", err).
+
+Return domain errors unchanged.
+
+Always preserve error chains.
+
+Use context cancellation correctly for long-running scans or LLM calls.
+
+---
+
+# Performance
+
+Prefer:
+
+- Context cancellation
+- Bounded goroutines (worker pools)
+- Connection pooling (pgxpool)
+
+Avoid:
+
+- Goroutine leaks
+- Unbounded channels
+- Large allocations in hot paths
+- Mutex contention
+- Blocking operations in the Event Loop
+
+---
+
+# Security
+
+Never:
+
+- Hardcode secrets (use .env or vault)
+- Disable TLS validation in production
+- Log credentials or raw exploit payloads to standard logs
+- Ignore context cancellation
+- Ignore Rules of Engagement
+
+---
+
+# Build and Verify
+
+Run before committing:
+
+go build ./cmd/...
+
+go vet ./...
+
+go test ./internal/domain/...
+
+Run integration tests when Infrastructure changes.
+
+---
+
+# Startup Order
+
+1. PostgreSQL
+2. Redis/NATS (if used)
+3. ophidian-worker
+4. ophidian-server
+5. ophidian-cli dashboard
+
+Verify health endpoints before testing.
+
+---
+
+# Project Structure
+
+cmd/
+internal/
+  domain/
+  application/
+  infrastructure/
+  interfaces/
+pkg/
+configs/
+docs/
+
+Refer to ARCHITECTURE.md for complete directory documentation.
+
+---
+
+# Development Workflow
+
+Before coding:
+
+1. Read AGENTS.md
+2. Read DEVELOPMENT_STATUS.md
+3. Read ARCHITECTURE.md
+4. Understand current phase
+5. Verify architecture boundaries
+
+After coding:
+
+1. Build
+2. Vet
+3. Test
+4. Review diff
+5. Commit
+
+---
+
+# Code Review Rules
+
+Review priority:
+
+1. Architecture
+2. Three Plane separation
+3. DDD boundaries
+4. Event Sourcing integrity
+5. Dependency direction
+6. CQRS consistency
+7. Concurrency safety
+8. Security
+9. Performance
+10. Maintainability
+
+Never prioritize formatting over architecture.
+
+Always reference the specific package, file, and function.
+
+Explain WHY something should change, not just WHAT.
+
+---
+
+# Forbidden Patterns
+
+Never:
+
+- Import Infrastructure into Domain
+- Bypass Repository interfaces
+- Bypass Event Store
+- Place business logic in HTTP handlers
+- Execute tools directly from AI Plane
+- Introduce circular dependencies
+- Break aggregate invariants
+- Leave TODO comments or empty stubs without explicit logging
+
+---
+
+# Context Files
+
+Read these when additional context is needed:
+
+- ARCHITECTURE.md
+- DEVELOPMENT_STATUS.md
+
+ARCHITECTURE.md contains detailed system architecture and component mapping.
+
+DEVELOPMENT_STATUS.md contains current implementation status, completed phases, known issues, and next milestones.

@@ -13,9 +13,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/ophidian/ophidian/internal/domain/common"
+	"github.com/ophidian/ophidian/internal/domain/mission"
 	"github.com/ophidian/ophidian/internal/infrastructure/dispatcher"
 	"github.com/ophidian/ophidian/internal/infrastructure/persistence/postgres"
 	"github.com/ophidian/ophidian/internal/infrastructure/queue"
+	"github.com/ophidian/ophidian/internal/infrastructure/runner"
 )
 
 func main() {
@@ -27,8 +30,9 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	nmapRunner := runner.NewNmapRunner()
 	q := queue.NewPriorityQueue(nil, queue.WithQueueLogger(stdLogger{}))
-	worker := NewWorker(q, missionRepo)
+	worker := NewWorker(q, missionRepo, nmapRunner)
 
 	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -98,10 +102,11 @@ func main() {
 type Worker struct {
 	q           *queue.PriorityQueue
 	missionRepo *postgres.MissionRepository
+	runner      runner.Runner
 }
 
-func NewWorker(q *queue.PriorityQueue, repo *postgres.MissionRepository) *Worker {
-	return &Worker{q: q, missionRepo: repo}
+func NewWorker(q *queue.PriorityQueue, repo *postgres.MissionRepository, r runner.Runner) *Worker {
+	return &Worker{q: q, missionRepo: repo, runner: r}
 }
 
 func (w *Worker) Run(ctx context.Context) {
@@ -168,13 +173,11 @@ func (w *Worker) handleMissionStarted(job *queue.Job) {
 	log.Printf("WORKER: ========================================")
 	log.Printf("WORKER: MISSION STARTED!")
 	log.Printf("WORKER:   mission_id=%s", payload.MissionID)
-	log.Printf("WORKER:   event_type=%s", envelope.EventType)
 	log.Printf("WORKER: ========================================")
 
 	m, err := w.missionRepo.FindByID(context.Background(), payload.MissionID)
 	if err != nil {
 		log.Printf("WORKER: WARNING: failed to load aggregate state for mission %s: %v", payload.MissionID, err)
-		log.Printf("WORKER: -> preparing reconnaissance for mission %s (operator: %s)", payload.MissionID, payload.StartedBy)
 		log.Printf("WORKER: -> WARNING: target details unavailable, mission may fail")
 		return
 	}
@@ -185,9 +188,53 @@ func (w *Worker) handleMissionStarted(job *queue.Job) {
 	}
 
 	log.Printf("WORKER: -> mission loaded: name=%q domains=%v ips=%v", m.Name, m.Target.Domains, m.Target.IPs)
-	log.Printf("WORKER: -> preparing reconnaissance for TARGET: %v", targets)
-	log.Printf("WORKER: -> recon phase: target enumeration, port scan, service fingerprinting")
-	log.Printf("WORKER: -> all modules standing by for mission %s", payload.MissionID)
+	log.Printf("WORKER: -> preparing reconnaissance for %d target(s): %v", len(targets), targets)
+
+	for _, target := range targets {
+		w.runReconForTarget(common.ID(payload.MissionID), target)
+	}
+}
+
+func (w *Worker) runReconForTarget(missionID common.ID, target string) {
+	startedAt := common.Now()
+	log.Printf("WORKER: -> scanning: %s", target)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	rawOutput, scanErr := w.runner.Run(ctx, target)
+	completedAt := common.Now()
+
+	var status common.TaskStatus
+	if scanErr != nil {
+		status = common.TaskFailed
+		log.Printf("WORKER: -> scan FAILED for %s: %v", target, scanErr)
+	} else {
+		status = common.TaskSuccess
+		log.Printf("WORKER: -> scan COMPLETE for %s (%d bytes)", target, len(rawOutput))
+	}
+
+	event := mission.ReconCompletedEvent{
+		MissionID:   missionID,
+		Target:      target,
+		RawOutput:   rawOutput,
+		Status:      status,
+		StartedAt:   startedAt,
+		CompletedAt: completedAt,
+	}
+
+	log.Printf("WORKER: \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014")
+	log.Printf("WORKER: ReconCompletedEvent")
+	log.Printf("WORKER:   mission_id:  %s", event.MissionID)
+	log.Printf("WORKER:   target:      %s", event.Target)
+	log.Printf("WORKER:   status:      %s", event.Status)
+	log.Printf("WORKER:   output_len:  %d", len(event.RawOutput))
+	log.Printf("WORKER:   started:     %s", event.StartedAt.Time.Format(time.RFC3339))
+	log.Printf("WORKER:   completed:   %s", event.CompletedAt.Time.Format(time.RFC3339))
+	if event.RawOutput != "" {
+		log.Printf("WORKER:   output_preview: %.200s", event.RawOutput)
+	}
+	log.Printf("WORKER: \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014")
 }
 
 func (w *Worker) handleStateChanged(job *queue.Job) {
