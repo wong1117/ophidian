@@ -2,7 +2,6 @@ package saga
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"github.com/ophidian/ophidian/internal/domain/common"
 )

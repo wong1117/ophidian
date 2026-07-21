@@ -41,7 +41,7 @@ func NewManager(cfg MultiProviderConfig) (*Manager, error) {
 		return nil, fmt.Errorf("no available AI providers")
 	}
 
-	manager.defaultType = manager.providers[0].Name()
+	manager.defaultType = ProviderType(manager.providers[0].Name())
 	return manager, nil
 }
 

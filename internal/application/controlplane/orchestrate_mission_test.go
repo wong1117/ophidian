@@ -118,7 +118,7 @@ func TestOrchestrateMissionUseCase_PlanSuccess(t *testing.T) {
 	mockEvt := new(mockOrchEventStore)
 	mockEvt.On("Append", ctx, mock.AnythingOfType("mission.MissionStateChanged")).Return(nil)
 
-	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt)
+	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt, nil)
 
 	resp, err := uc.Execute(ctx, OrchestrateRequest{
 		MissionID: m.ID.String(),
@@ -149,7 +149,7 @@ func TestOrchestrateMissionUseCase_ReadySuccess(t *testing.T) {
 	mockEvt := new(mockOrchEventStore)
 	mockEvt.On("Append", ctx, mock.AnythingOfType("mission.MissionStateChanged")).Return(nil)
 
-	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt)
+	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt, nil)
 
 	resp, err := uc.Execute(ctx, OrchestrateRequest{
 		MissionID: m.ID.String(),
@@ -174,7 +174,7 @@ func TestOrchestrateMissionUseCase_RunSuccess(t *testing.T) {
 	mockEvt := new(mockOrchEventStore)
 	mockEvt.On("Append", ctx, mock.AnythingOfType("mission.MissionStateChanged")).Return(nil)
 
-	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt)
+	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt, nil)
 
 	resp, err := uc.Execute(ctx, OrchestrateRequest{
 		MissionID: m.ID.String(),
@@ -199,7 +199,7 @@ func TestOrchestrateMissionUseCase_CompleteSuccess(t *testing.T) {
 	mockEvt := new(mockOrchEventStore)
 	mockEvt.On("Append", ctx, mock.AnythingOfType("mission.MissionStateChanged")).Return(nil)
 
-	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt)
+	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt, nil)
 
 	resp, err := uc.Execute(ctx, OrchestrateRequest{
 		MissionID: m.ID.String(),
@@ -224,7 +224,7 @@ func TestOrchestrateMissionUseCase_FailSuccess(t *testing.T) {
 	mockEvt := new(mockOrchEventStore)
 	mockEvt.On("Append", ctx, mock.AnythingOfType("mission.MissionStateChanged")).Return(nil)
 
-	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt)
+	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt, nil)
 
 	resp, err := uc.Execute(ctx, OrchestrateRequest{
 		MissionID: m.ID.String(),
@@ -239,7 +239,7 @@ func TestOrchestrateMissionUseCase_FailSuccess(t *testing.T) {
 }
 
 func TestOrchestrateMissionUseCase_EmptyMissionID(t *testing.T) {
-	uc := NewOrchestrateMissionUseCase(nil, nil)
+	uc := NewOrchestrateMissionUseCase(nil, nil, nil)
 
 	resp, err := uc.Execute(context.Background(), OrchestrateRequest{
 		Action: ActionPlan,
@@ -251,7 +251,7 @@ func TestOrchestrateMissionUseCase_EmptyMissionID(t *testing.T) {
 }
 
 func TestOrchestrateMissionUseCase_EmptyAction(t *testing.T) {
-	uc := NewOrchestrateMissionUseCase(nil, nil)
+	uc := NewOrchestrateMissionUseCase(nil, nil, nil)
 
 	resp, err := uc.Execute(context.Background(), OrchestrateRequest{
 		MissionID: "m1",
@@ -267,7 +267,7 @@ func TestOrchestrateMissionUseCase_MissionNotFound(t *testing.T) {
 	mockRepo := new(mockOrchMissionRepo)
 	mockRepo.On("FindByID", ctx, "bad-id").Return(nil, common.ErrMissionNotFound)
 
-	uc := NewOrchestrateMissionUseCase(mockRepo, nil)
+	uc := NewOrchestrateMissionUseCase(mockRepo, nil, nil)
 
 	resp, err := uc.Execute(ctx, OrchestrateRequest{
 		MissionID: "bad-id",
@@ -287,7 +287,7 @@ func TestOrchestrateMissionUseCase_InvalidTransition(t *testing.T) {
 	mockRepo := new(mockOrchMissionRepo)
 	mockRepo.On("FindByID", ctx, m.ID.String()).Return(m, nil)
 
-	uc := NewOrchestrateMissionUseCase(mockRepo, nil)
+	uc := NewOrchestrateMissionUseCase(mockRepo, nil, nil)
 
 	resp, err := uc.Execute(ctx, OrchestrateRequest{
 		MissionID: m.ID.String(),
@@ -307,7 +307,7 @@ func TestOrchestrateMissionUseCase_UnknownAction(t *testing.T) {
 	mockRepo := new(mockOrchMissionRepo)
 	mockRepo.On("FindByID", ctx, m.ID.String()).Return(m, nil)
 
-	uc := NewOrchestrateMissionUseCase(mockRepo, nil)
+	uc := NewOrchestrateMissionUseCase(mockRepo, nil, nil)
 
 	resp, err := uc.Execute(ctx, OrchestrateRequest{
 		MissionID: m.ID.String(),
@@ -327,7 +327,7 @@ func TestOrchestrateMissionUseCase_UpdateError(t *testing.T) {
 	mockRepo.On("FindByID", ctx, m.ID.String()).Return(m, nil)
 	mockRepo.On("Update", ctx, mock.AnythingOfType("*mission.Mission")).Return(errors.New("db error"))
 
-	uc := NewOrchestrateMissionUseCase(mockRepo, nil)
+	uc := NewOrchestrateMissionUseCase(mockRepo, nil, nil)
 
 	resp, err := uc.Execute(ctx, OrchestrateRequest{
 		MissionID: m.ID.String(),
@@ -351,7 +351,7 @@ func TestOrchestrateMissionUseCase_EventStoreError(t *testing.T) {
 	mockEvt := new(mockOrchEventStore)
 	mockEvt.On("Append", ctx, mock.AnythingOfType("mission.MissionStateChanged")).Return(errors.New("event store down"))
 
-	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt)
+	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt, nil)
 
 	resp, err := uc.Execute(ctx, OrchestrateRequest{
 		MissionID: m.ID.String(),
@@ -389,7 +389,7 @@ func TestOrchestrateMissionUseCase_FullLifecycle(t *testing.T) {
 	mockEvt := new(mockOrchEventStore)
 	mockEvt.On("Append", ctx, mock.AnythingOfType("mission.MissionStateChanged")).Return(nil).Times(5)
 
-	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt)
+	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt, nil)
 
 	resp, err := uc.Execute(ctx, OrchestrateRequest{MissionID: m.ID.String(), Action: ActionPlan, UpdatedBy: "op"})
 	assert.NoError(t, err)
@@ -423,7 +423,7 @@ func TestOrchestrateMissionUseCase_FailAfterRunning(t *testing.T) {
 	mockEvt := new(mockOrchEventStore)
 	mockEvt.On("Append", ctx, mock.AnythingOfType("mission.MissionStateChanged")).Return(nil)
 
-	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt)
+	uc := NewOrchestrateMissionUseCase(mockRepo, mockEvt, nil)
 
 	resp, err := uc.Execute(ctx, OrchestrateRequest{
 		MissionID: m.ID.String(),

@@ -1,7 +1,5 @@
 package saga
 
-import "github.com/ophidian/ophidian/internal/domain/common"
-
 func NewAttackSagaOrchestrator(missionID string) *AttackSaga {
 	saga := NewAttackSaga(missionID)
 

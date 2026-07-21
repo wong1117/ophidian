@@ -1,10 +1,5 @@
 package network
 
-import (
-	"net"
-	"net/url"
-)
-
 type Proxy struct {
 	Type string
 	Addr string

@@ -1,6 +1,8 @@
 package nats
 
 import (
+	"time"
+
 	"github.com/nats-io/nats.go"
 )
 
@@ -16,6 +18,6 @@ func (p *Publisher) Publish(subject string, data []byte) error {
 	return p.conn.Publish(subject, data)
 }
 
-func (p *Publisher) Request(subject string, data []byte, timeout int) (*nats.Msg, error) {
+func (p *Publisher) Request(subject string, data []byte, timeout time.Duration) (*nats.Msg, error) {
 	return p.conn.Request(subject, data, timeout)
 }

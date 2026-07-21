@@ -1,7 +1,6 @@
 package opsec
 
 import (
-	"context"
 	"strings"
 )
 

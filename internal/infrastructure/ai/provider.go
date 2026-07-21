@@ -41,14 +41,3 @@ type TokenUsage struct {
 	CompletionTokens int
 	TotalTokens      int
 }
-
-type ProviderConfig struct {
-	Type        ProviderType
-	APIKey      string
-	Model       string
-	BaseURL     string
-	MaxTokens   int
-	Temperature float64
-	TopP        float64
-	Timeout     int
-}

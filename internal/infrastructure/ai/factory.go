@@ -1,6 +1,9 @@
 package ai
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 func NewProviderFromConfig(cfg ProviderConfig) (Provider, error) {
 	switch cfg.Type {
@@ -32,3 +35,55 @@ func newAnthropicProvider(cfg ProviderConfig) Provider {
 func newGeminiProvider(cfg ProviderConfig) Provider {
 	return &geminiProvider{cfg: cfg}
 }
+
+type ollamaProvider struct {
+	cfg ProviderConfig
+}
+
+func (p *ollamaProvider) Name() string                                       { return string(ProviderOllama) }
+func (p *ollamaProvider) Generate(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
+	return nil, fmt.Errorf("ollama provider not implemented")
+}
+func (p *ollamaProvider) GenerateStream(ctx context.Context, req GenerateRequest) (<-chan string, error) {
+	return nil, fmt.Errorf("ollama stream not implemented")
+}
+func (p *ollamaProvider) IsAvailable() bool { return false }
+
+type openAIProvider struct {
+	cfg ProviderConfig
+}
+
+func (p *openAIProvider) Name() string { return string(ProviderOpenAI) }
+func (p *openAIProvider) Generate(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
+	return nil, fmt.Errorf("openai provider not implemented")
+}
+func (p *openAIProvider) GenerateStream(ctx context.Context, req GenerateRequest) (<-chan string, error) {
+	return nil, fmt.Errorf("openai stream not implemented")
+}
+func (p *openAIProvider) IsAvailable() bool { return false }
+
+type anthropicProvider struct {
+	cfg ProviderConfig
+}
+
+func (p *anthropicProvider) Name() string { return string(ProviderAnthropic) }
+func (p *anthropicProvider) Generate(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
+	return nil, fmt.Errorf("anthropic provider not implemented")
+}
+func (p *anthropicProvider) GenerateStream(ctx context.Context, req GenerateRequest) (<-chan string, error) {
+	return nil, fmt.Errorf("anthropic stream not implemented")
+}
+func (p *anthropicProvider) IsAvailable() bool { return false }
+
+type geminiProvider struct {
+	cfg ProviderConfig
+}
+
+func (p *geminiProvider) Name() string { return string(ProviderGemini) }
+func (p *geminiProvider) Generate(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
+	return nil, fmt.Errorf("gemini provider not implemented")
+}
+func (p *geminiProvider) GenerateStream(ctx context.Context, req GenerateRequest) (<-chan string, error) {
+	return nil, fmt.Errorf("gemini stream not implemented")
+}
+func (p *geminiProvider) IsAvailable() bool { return false }

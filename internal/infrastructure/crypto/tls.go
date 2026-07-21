@@ -2,7 +2,6 @@ package crypto
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 )
 
 func NewTLSConfig(certFile, keyFile string) (*tls.Config, error) {
