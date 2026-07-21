@@ -364,3 +364,21 @@ Read these when additional context is needed:
 ARCHITECTURE.md contains detailed system architecture and component mapping.
 
 DEVELOPMENT_STATUS.md contains current implementation status, completed phases, known issues, and next milestones.
+- ROADMAP.md
+
+---
+
+# Mandatory Task Completion Protocol
+
+Every time you complete a requested task or fix a bug:
+
+1. Open DEVELOPMENT_STATUS.md.
+2. Update the "Current Task" section to reflect the current implementation state.
+3. Mark completed milestones or sub-tasks.
+4. Record any newly discovered issues in "Known Issues".
+5. Ensure DEVELOPMENT_STATUS.md accurately reflects the repository state.
+6. If Git operations are permitted in the current environment, include the DEVELOPMENT_STATUS.md update in the same commit as the code changes.
+7. Before considering the task complete, verify that:
+   - The project builds successfully (when applicable).
+   - Relevant tests pass (when applicable).
+   - DEVELOPMENT_STATUS.md is synchronized with the implementation.

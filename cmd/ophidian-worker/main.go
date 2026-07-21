@@ -27,12 +27,14 @@ func main() {
 	pool := connectDB()
 	defer pool.Close()
 	missionRepo := postgres.NewMissionRepository(pool)
+	eventStore := postgres.NewEventStore(pool)
+	eventStore.Migrate(context.Background())
 
 	mux := http.NewServeMux()
 
 	nmapRunner := runner.NewNmapRunner()
 	q := queue.NewPriorityQueue(nil, queue.WithQueueLogger(stdLogger{}))
-	worker := NewWorker(q, missionRepo, nmapRunner)
+	worker := NewWorker(q, missionRepo, nmapRunner, eventStore)
 
 	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -103,10 +105,11 @@ type Worker struct {
 	q           *queue.PriorityQueue
 	missionRepo *postgres.MissionRepository
 	runner      runner.Runner
+	eventStore  *postgres.EventStore
 }
 
-func NewWorker(q *queue.PriorityQueue, repo *postgres.MissionRepository, r runner.Runner) *Worker {
-	return &Worker{q: q, missionRepo: repo, runner: r}
+func NewWorker(q *queue.PriorityQueue, repo *postgres.MissionRepository, r runner.Runner, es *postgres.EventStore) *Worker {
+	return &Worker{q: q, missionRepo: repo, runner: r, eventStore: es}
 }
 
 func (w *Worker) Run(ctx context.Context) {
@@ -234,7 +237,24 @@ func (w *Worker) runReconForTarget(missionID common.ID, target string) {
 	if event.RawOutput != "" {
 		log.Printf("WORKER:   output_preview: %.200s", event.RawOutput)
 	}
-	log.Printf("WORKER: \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014")
+	log.Printf("WORKER: ——————————————————")
+
+	if w.eventStore != nil {
+		payloadBytes, _ := json.Marshal(event)
+		record := postgres.EventRecord{
+			ID:            event.EventID(),
+			AggregateID:   event.AggregateID(),
+			AggregateType: "mission",
+			EventType:     event.EventType(),
+			Payload:       payloadBytes,
+			OccurredAt:    event.CompletedAt.Time,
+		}
+		if err := w.eventStore.Append(context.Background(), -1, record); err != nil {
+			log.Printf("WORKER: WARNING: failed to append event to store: %v", err)
+		} else {
+			log.Printf("WORKER: Recon event appended to store for mission %s", event.MissionID)
+		}
+	}
 }
 
 func (w *Worker) handleStateChanged(job *queue.Job) {

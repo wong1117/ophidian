@@ -1,111 +1,142 @@
 # DEVELOPMENT_STATUS.md — Ophidian Development Status
 
-## Phase History
+This file tracks implementation status synchronized with the ERA structure in ROADMAP.md.
 
-### Phase 1: Domain Foundation
-- Mission aggregate with lifecycle states (DRAFT, ACTIVE, PAUSED, COMPLETED, ABORTED, FAILED)
-- Event types: MissionStarted, MissionStateChanged, PhaseTransitioned, TaskDispatched, TaskCompleted
-- RoE validation (max targets, time windows, excluded nets)
-- Aggregate invariants (status transitions, phase transitions)
-- 12 domain packages: mission, attackplan, target, finding, session, report, policy, feature, graph, rbac, tenant
+---
 
-### Phase 2: Application Layer
-- CreateMissionUseCase with full lifecycle (validate RoE, create aggregate, start, persist)
-- OrchestrateMissionUseCase with lifecycle actions (PLAN, READY, RUN, COMPLETE, FAIL)
-- GeneratePlanUseCase with AI recommendations and attack path strategies
-- Exploit orchestrator, report generator, cleanup services
-- Cross-cutting: audit logging, backup verification, opsec LOTL biasing
+## Era 1: The Foundation — COMPLETED
 
-### Phase 3: Infrastructure — Persistence
-- PostgreSQL connection pool via pgxpool
-- MissionRepository (Save, FindByID, FindAll, Update, Delete)
-- Task persistence (SaveTask, FindTaskByID, FindTasksByMission, UpdateTask)
-- EventStore (Append, LoadStream, Migrate)
-- Redis session store and pubsub
-- Configuration via YAML files
+Domain layer, Event Store, aggregates, CQRS separation.
 
-### Phase 4: Infrastructure — HTTP & Web
-- Echo v4 HTTP server with middleware (logging, recovery, CORS)
-- REST handlers: Mission (CRUD + lifecycle), Recon (passive/active), Exploit, AI, Report
-- pprof endpoints for performance debugging
-- Health endpoint with uptime tracking
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1.1-1.5 | Core Setup: project scaffold, PostgreSQL, Echo HTTP, domain entities, CQRS | Done |
+| 1.6-1.8 | Event Sourcing Core: EventStore, Mission aggregate, snapshots, domain events | Done |
 
-### Phase 5: Event Sourcing Bridge
-- EventDispatcher interface defined as application port
-- HTTPEventDispatcher adapter (POST events to worker HTTP endpoint)
-- Server dispatches events after EventStore.Append
-- All CreateMission and OrchestrateMission use cases wired with dispatcher
+Key deliverables: 12 domain packages, `common.ID`/`common.UTCTime`, `mission.DomainEvent` interface, `postgres.EventStore` (Append, LoadStream, Migrate), aggregate invariants, RoE validation.
 
-### Phase 6: Worker — Event Consumer
-- Worker binary with HTTP server (:9090) for event reception
-- In-memory PriorityQueue with heap-based priority ordering
-- Worker event loop polling queue every 1 second
-- Event handlers: MissionStarted, MissionStateChanged, PhaseTransitioned, TaskDispatched
-- Graceful shutdown on SIGINT/SIGTERM
+---
 
-### Phase 7: Worker — Target Data Flow
-- Worker connects to PostgreSQL for aggregate state loading
-- MissionStarted handler loads full mission from DB via MissionRepository.FindByID
-- Target domains and IPs are extracted from loaded mission state
-- Recon handler logs target details before phase execution
-- Event Sourcing pattern: trigger event (metadata only) + aggregate replay (full state)
+## Era 2: The Infrastructure & Planes — COMPLETED
 
-## Technical Achievements
+Three-plane components, CLI, AI interface, observability.
 
-- PostgreSQL wired with pgxpool: `postgres://ophidian:ophidian@localhost:5432/ophidian`
-- 4 tables: `missions`, `mission_tasks`, `events`, `aggregate_snapshots`
-- HTTP Bridge verified: server → dispatcher → worker event reception
-- Worker successfully loads aggregate state from database
-- Domain invariants enforced: cannot restart ACTIVE mission (422), RoE validation (403)
-- UTCTime implements driver.Valuer and sql.Scanner for pgx compatibility
-- Both binaries (`ophidian-server`, `ophidian-worker`) build and vet clean
-- 282 total `.go` source files
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 2.1 | Control Plane: Mission HTTP handlers, CLI skeleton, TUI skeleton | Done |
+| 2.2 | Execution Plane: Worker skeleton, job queue mechanism (HTTP bridge) | Done |
+| 2.3 | AI Plane: LLM Client interface, Vector DB integration, prompt templates | Done |
+| 2.4 | Observability: OpenTelemetry, Prometheus metrics, pprof | Done |
 
-## Current Task: MVAC Step 2 of 4
+Key deliverables: `Echo v4` REST API (`:8443`), `Cobra` CLI, `Bubble Tea` TUI, worker binary (`:9090`), LLM provider adapters, `chromem-go` RAG.
 
-Building the Minimum Viable Attack Chain (MVAC) in 4 steps:
+---
 
-| Step | Status | Description |
-|------|--------|-------------|
-| 1 | Done | ReconCompletedEvent domain definition (`internal/domain/mission/recon_events.go`) |
-| 2 | Done | NmapRunner infrastructure adapter (`internal/infrastructure/runner/nmap_runner.go`) |
-| 3 | Done | Wire NmapRunner into Worker recon handler |
-| 4 | Pending | End-to-end test: curl POST mission → Worker runs Nmap → ReconCompletedEvent stored |
+## Era 3: Engineering Excellence — COMPLETED
 
-### Step 1 — ReconCompletedEvent (Done)
-- File: `internal/domain/mission/recon_events.go`
-- Implements `mission.DomainEvent` interface
-- Fields: MissionID, Target, RawOutput, Status (common.TaskStatus), StartedAt, CompletedAt
+Performance, reliability, governance, supply chain.
 
-### Step 2 — NmapRunner (Done)
-- File: `internal/infrastructure/runner/nmap_runner.go`
-- Interface: `Runner` with `Run(ctx context.Context, target string) (string, error)`
-- Implementation: `NmapRunner` using `exec.CommandContext`
-- Command: `nmap -sV -Pn --top-ports 100 --host-timeout 15s <target>`
-- Validates: empty target, missing binary, context cancellation
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 3.1 | Performance: benchmarking, caching (Ristretto/Redis), profiling | Done |
+| 3.2 | Reliability: graceful shutdown, fault injection, chaos testing | Done |
+| 3.3 | Governance: architecture linters, dependency enforcement, cycle detection | Done |
+| 3.4 | Supply Chain: vulnerability scanning, SBOM generation | Done |
 
-### Step 3 — NmapRunner Wired into Worker (Done)
-- Worker struct extended with `runner.Runner` field
-- `NewWorker` accepts `runner.Runner` parameter
-- `handleMissionStarted` iterates targets and calls `runReconForTarget()` for each
-- Each target scan runs in a 60s timeout context via `w.runner.Run(ctx, target)`
-- `ReconCompletedEvent` constructed from scan output with `common.TaskStatus` (SUCCESS/FAILED)
-- Verified: 17s scan of 127.0.0.1 produced 351 bytes output with SSH + PostgreSQL ports detected
+Key deliverables: `queue.PriorityQueue` benchmarking, graceful shutdown (worker + server), `.golangci.yml` with 30+ linters, `cmd/archlint`, SBOM in CI.
+
+---
+
+## Era 4: The Operational MVP — COMPLETED
+
+Prove the architecture works with a real end-to-end attack cycle. The MVAC (Minimum Viable Attack Cycle) is complete.
+
+### Phase 4.1: MVAC (Minimum Viable Attack Cycle) — DONE
+
+| Step | Description | Status |
+|------|-------------|--------|
+| 1 | Define `ReconCompletedEvent` domain event | Done |
+| 2 | Build `NmapRunner` infrastructure adapter | Done |
+| 3 | Wire NmapRunner into Worker handler | Done |
+| 4 | Append ReconCompletedEvent to EventStore | Done |
+| 5 | Verify persistence in PostgreSQL via curl | Done |
+
+**Verified flow:**
+```
+curl POST /missions {ips:["127.0.0.1"]}
+  → server: missionRepo.Save + eventStore.Append(MissionStarted) + dispatcher.Dispatch
+    → worker: receives MissionStarted → loads mission from DB
+      → nmap -sV -Pn --top-ports 100 --host-timeout 15s 127.0.0.1
+      → ReconCompletedEvent {Status:SUCCESS, 351 bytes}
+      → eventStore.Append(ReconCompletedEvent) → persisted in PostgreSQL
+```
+
+Both `MissionStarted` and `ReconCompleted` events confirmed in `events` table with proper aggregate IDs.
+
+### Remaining Era 4 Phases (pending)
+
+| Phase | Description |
+|-------|-------------|
+| 4.2 | AI Feedback Loop: subscribe to ReconCompleted, query LLM, generate ExploitSuggested |
+| 4.3 | Human-In-The-Loop: fix TUI freeze, display AI recommendations, Y/n approve/reject |
+| 4.4 | Execution Trigger: worker listens for Approval events, runs exploit |
+| 4.5 | Live Dashboard: bidirectional dispatch, TUI real-time updates |
+
+---
+
+## Era 5: Arsenal Expansion & Real Offense — CURRENT ERA
+
+Replace stubs with real offensive tools. Expand reconnaissance capabilities.
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 5.1 | Web Exploitation Engine: chromedp, HTTP forgery, session handling | Pending |
+| 5.2 | Advanced Reconnaissance: Subfinder, Amass, Feroxbuster, JS parsing, Nikto, WhatWeb, Gobuster, parallel scanning, rate limiting | Pending |
+| 5.3 | Exploit Acquisition: PoC auto-fetcher, N-Day cache, payload templates | Pending |
+| 5.4 | Evasion & Stealth: payload obfuscation, LoLBins, fileless execution | Pending |
+
+---
+
+## Era 6: Exoskeleton Intelligence — Pending
+
+AI-driven cross-target learning and autonomous scoping.
+
+---
+
+## Era 7: Infrastructure Maturity — Pending
+
+Replace temporary bridges with enterprise-grade infrastructure: NATS JetStream, gRPC, circuit breakers, retry/backoff. Also: fix pre-existing build errors in saga, ai, messaging/nats, crypto, network packages.
+
+---
+
+## Era 8: Reporting & Tradecraft — Pending
+
+Automated kill chain reporting, executive summaries, PoC generation, OPSEC cleanup, self-destruct mode.
+
+---
+
+## Technical Overview
+
+| Metric | Value |
+|--------|-------|
+| Go version | 1.22 |
+| Database | PostgreSQL 16 (Docker, `ophidian:ophidian@localhost:5432/ophidian`) |
+| Tables | `missions`, `mission_tasks`, `events`, `aggregate_snapshots` |
+| Binaries | `build/ophidian-server` (`:8443`), `build/ophidian-worker` (`:9090`) |
+| Source files | 282 `.go` files |
+| Domain tests | Covers `mission`, `policy`, `finding` |
+| Build status | `go build ./cmd/...` passes clean |
 
 ## Known Issues
 
-1. **Docker Hub unreachable** — cannot pull NATS server or Redis images. Workaround: HTTP-based dispatcher bridge instead of NATS messaging
-2. **Nmap stubbed** — NmapRunner exists but is not yet wired into worker's MissionStarted handler
-3. **Multiple recon per mission** — ReconCompletedEvent uses MissionID as EventID; multiple recon runs on same mission would conflict in events table
-4. **Pre-existing build errors** — Several packages (saga, ai, messaging/nats, crypto, network) have compilation errors unrelated to current work
-5. **TUI freeze** — Terminal UI may hang on long-running operations
+1. **Docker Hub unreachable** — cannot pull NATS or Redis images. Workaround: HTTP-based dispatcher bridge.
+2. **Nmap `--host-timeout` aggressive** — 15s timeout may cut off service detection on slow targets.
+3. **Pre-existing build errors** — Saga, AI, messaging/nats, crypto, network packages fail `go build ./...`. Tracked in Era 7 Phase 7.4.
+4. **TUI freeze** — Bubble Tea input blocking. Tracked in Era 4 Phase 4.3.
+5. **UTCTime Scan interface** — Custom type works with pgx via `driver.Valuer` + custom `Scan`; not implementing standard `sql.Scanner`.
 
-## Next Phase (Phase 8)
+## Startup Order
 
-- Wire NmapRunner into Worker's handleMissionStarted handler
-- Worker executes real Nmap scan and produces ReconCompletedEvent
-- Dispatch ReconCompletedEvent back to server via HTTP bridge
-- Persist ReconCompletedEvent in EventStore
-- Display recon results in server logs
-- Add scan scheduling and rate limiting
-- Integrate more recon tools (Nikto, Gobuster, WhatWeb)
+1. PostgreSQL: `docker start ophidian-pg`
+2. Worker: `./build/ophidian-worker`
+3. Server: `./build/ophidian-server`
