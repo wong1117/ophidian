@@ -333,7 +333,7 @@ func (p *PromptLibrary) loadDefaults() {
 	p.templates["exploit-execute"] = PromptTemplate{
 		Name:   "Exploit Execution",
 		System: "You are an automated exploitation engine. Execute the given exploit and report results.",
-		User:   "Execute exploit {{exploit_id}} against target {{target}} on port {{port}}. Payload options: {{options}}. Report success/failure and post-exploitation opportunities.",
+		User:   "Execute exploit {{exploit_id}} against target {{target}} on ports {{ports}}. Payload options: {{options}}. Report success/failure and post-exploitation opportunities.",
 		Phase:  "EXPLOIT",
 	}
 	p.templates["report-summary"] = PromptTemplate{

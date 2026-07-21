@@ -382,3 +382,14 @@ Every time you complete a requested task or fix a bug:
    - The project builds successfully (when applicable).
    - Relevant tests pass (when applicable).
    - DEVELOPMENT_STATUS.md is synchronized with the implementation.
+
+---
+
+# Dependency Maintenance Rule
+
+- Setelah setiap perubahan dependency (go.mod/go.sum), jalankan go mod tidy.
+- Jalankan govulncheck ./....
+- Jika ditemukan vulnerability yang memiliki versi perbaikan, usulkan upgrade ke versi tersebut.
+- Jangan memperkenalkan dependency baru yang memiliki vulnerability dengan tingkat keparahan tinggi tanpa alasan yang terdokumentasi.
+
+---
