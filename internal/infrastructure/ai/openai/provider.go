@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ophidian/ophidian/internal/infrastructure/ai"
@@ -49,6 +51,10 @@ func NewProvider(cfg ai.ProviderConfig) *Provider {
 	if baseURL == "" {
 		baseURL = "https://api.openai.com/v1"
 	}
+	baseURL = strings.TrimRight(baseURL, "/")
+	if !strings.HasSuffix(baseURL, "/v1") {
+		baseURL += "/v1"
+	}
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = 120
@@ -73,6 +79,13 @@ func (p *Provider) Generate(ctx context.Context, req ai.GenerateRequest) (*ai.Ge
 	if req.Model != "" {
 		model = req.Model
 	}
+	maxTokens := req.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = p.cfg.MaxTokens
+	}
+	if maxTokens <= 0 {
+		maxTokens = 1024
+	}
 
 	messages := []chatMessage{}
 	if req.System != "" {
@@ -81,11 +94,15 @@ func (p *Provider) Generate(ctx context.Context, req ai.GenerateRequest) (*ai.Ge
 	messages = append(messages, chatMessage{Role: "user", Content: req.Prompt})
 
 	body := map[string]interface{}{
-		"model":       model,
-		"messages":    messages,
-		"temperature": req.Temperature,
-		"max_tokens":  req.MaxTokens,
-		"top_p":       req.TopP,
+		"model":      model,
+		"messages":   messages,
+		"max_tokens": maxTokens,
+	}
+	if req.Temperature > 0 {
+		body["temperature"] = req.Temperature
+	}
+	if req.TopP > 0 {
+		body["top_p"] = req.TopP
 	}
 
 	payload, _ := json.Marshal(body)
@@ -103,7 +120,8 @@ func (p *Provider) Generate(ctx context.Context, req ai.GenerateRequest) (*ai.Ge
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("openai API error: %s", resp.Status)
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("openai API error: %s: %s", resp.Status, string(data))
 	}
 
 	var result chatResponse

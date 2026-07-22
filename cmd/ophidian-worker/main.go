@@ -9,12 +9,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	appai "github.com/ophidian/ophidian/internal/application/ai"
 	"github.com/ophidian/ophidian/internal/domain/common"
 	"github.com/ophidian/ophidian/internal/domain/mission"
+	infraai "github.com/ophidian/ophidian/internal/infrastructure/ai"
+	"github.com/ophidian/ophidian/internal/infrastructure/ai/providerfactory"
 	"github.com/ophidian/ophidian/internal/infrastructure/dispatcher"
 	"github.com/ophidian/ophidian/internal/infrastructure/persistence/postgres"
 	"github.com/ophidian/ophidian/internal/infrastructure/queue"
@@ -23,6 +27,7 @@ import (
 
 func main() {
 	log.Println("=== ophidian-worker starting ===")
+	loadDotEnv(".env")
 
 	pool := connectDB()
 	defer pool.Close()
@@ -81,6 +86,7 @@ func main() {
 	defer cancel()
 
 	go worker.Run(ctx)
+	go startAIEventSubscriber(ctx, eventStore)
 
 	srv := &http.Server{Addr: ":9090", Handler: mux}
 	go func() {
@@ -294,6 +300,118 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func startAIEventSubscriber(ctx context.Context, eventStore *postgres.EventStore) {
+	log.Println("AI Subscriber starting...")
+	cfg, ok := aiProviderConfigFromEnv()
+	if !ok {
+		log.Printf("AI-SUBSCRIBER/WARN: disabled: DEEPSEEK_API_KEY is not set")
+		return
+	}
+	provider, err := providerfactory.NewProviderFromConfig(cfg)
+	if err != nil {
+		log.Printf("AI SUBSCRIBER ERROR: provider setup failed: %v", err)
+		return
+	}
+	log.Printf("AI-SUBSCRIBER: provider=%s model=%s base_url=%s", cfg.Type, cfg.Model, cfg.BaseURL)
+
+	stream := eventStreamAdapter{store: eventStore}
+	llm := providerfactory.NewLLMClientAdapter(provider)
+	subscriber := appai.NewEventSubscriber(stream, llm, 5*time.Second, log.Default())
+	subscriber.Run(ctx)
+}
+
+func aiProviderConfigFromEnv() (infraai.ProviderConfig, bool) {
+	if key := os.Getenv("DEEPSEEK_API_KEY"); key != "" {
+		return infraai.ProviderConfig{
+			Type:      infraai.ProviderOpenAI,
+			APIKey:    key,
+			Model:     envOr("DEEPSEEK_MODEL", "deepseek-chat"),
+			BaseURL:   envOr("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+			Timeout:   60,
+			MaxTokens: 1024,
+		}, true
+	}
+
+	return infraai.ProviderConfig{}, false
+}
+
+func loadDotEnv(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("WORKER: .env not loaded from %s: %v", path, err)
+		return
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.Trim(strings.TrimSpace(value), "\"'")
+		if key == "" || os.Getenv(key) != "" {
+			continue
+		}
+		os.Setenv(key, value)
+	}
+	log.Printf("WORKER: .env loaded from %s", path)
+}
+
+type eventStreamAdapter struct {
+	store *postgres.EventStore
+}
+
+func (a eventStreamAdapter) LoadEventsSince(ctx context.Context, since time.Time) ([]appai.StoredEvent, error) {
+	records, err := a.store.LoadAllEvents(ctx, since, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]appai.StoredEvent, 0, len(records))
+	for i := len(records) - 1; i >= 0; i-- {
+		record := records[i]
+		events = append(events, appai.StoredEvent{
+			ID:          record.ID,
+			AggregateID: record.AggregateID,
+			EventType:   record.EventType,
+			Payload:     record.Payload,
+			OccurredAt:  record.OccurredAt,
+		})
+	}
+	return events, nil
+}
+
+func (a eventStreamAdapter) Append(ctx context.Context, event interface{}) error {
+	domainEvent, ok := event.(interface {
+		EventID() string
+		EventType() string
+		OccurredAt() common.UTCTime
+		AggregateID() string
+	})
+	if !ok {
+		return fmt.Errorf("event does not implement domain event contract")
+	}
+
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("marshal event: %w", err)
+	}
+
+	record := postgres.EventRecord{
+		ID:            domainEvent.EventID(),
+		AggregateID:   domainEvent.AggregateID(),
+		AggregateType: "mission",
+		EventType:     domainEvent.EventType(),
+		Payload:       payload,
+		OccurredAt:    domainEvent.OccurredAt().Time,
+	}
+	return a.store.Append(ctx, -1, record)
 }
 
 type stdLogger struct{}

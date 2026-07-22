@@ -73,14 +73,33 @@ curl POST /missions {ips:["127.0.0.1"]}
 
 Both `MissionStarted` and `ReconCompleted` events confirmed in `events` table with proper aggregate IDs.
 
-### Remaining Era 4 Phases (pending)
+### Phase 4.2: AI Feedback Loop — DONE
 
-| Phase | Description |
-|-------|-------------|
-| 4.2 | AI Feedback Loop: subscribe to ReconCompleted, query LLM, generate ExploitSuggested |
-| 4.3 | Human-In-The-Loop: fix TUI freeze, display AI recommendations, Y/n approve/reject |
-| 4.4 | Execution Trigger: worker listens for Approval events, runs exploit |
-| 4.5 | Live Dashboard: bidirectional dispatch, TUI real-time updates |
+| Step | Description | Status |
+|------|-------------|--------|
+| 1 | Create background event subscriber for `ReconCompleted` events | Done |
+| 2 | Send Nmap output to AI Plane through the existing LLM client adapter | Done |
+| 3 | Generate `AIRecommendationGenerated` domain event with recommendation and confidence | Done |
+| 4 | Persist AI recommendation event to PostgreSQL EventStore | Done |
+
+**Implemented flow:**
+```
+worker appends ReconCompleted
+  → AI event subscriber polls EventStore
+    → extracts RawOutput from ReconCompleted payload
+      → prompts Ollama/DeepSeek for tactical recommendations
+        → appends AIRecommendationGenerated to EventStore
+```
+
+LLM connection failures are logged as warnings and do not stop the worker.
+
+### Remaining Era 4 Phases — COMPLETED
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 4.3 | Human-In-The-Loop: fix TUI freeze, display AI recommendations, Y/n approve/reject | Done |
+| 4.4 | Execution Trigger: worker listens for Approval events, runs exploit | Done |
+| 4.5 | Live Dashboard: bidirectional dispatch, TUI real-time updates | Done |
 
 ---
 
@@ -119,13 +138,17 @@ Automated kill chain reporting, executive summaries, PoC generation, OPSEC clean
 
 | Metric | Value |
 |--------|-------|
-| Go version | 1.22 |
+| Go version | 1.25.0 (`go.mod`); GitHub Actions pinned to Go 1.25 |
 | Database | PostgreSQL 16 (Docker, `ophidian:ophidian@localhost:5432/ophidian`) |
 | Tables | `missions`, `mission_tasks`, `events`, `aggregate_snapshots` |
 | Binaries | `build/ophidian-server` (`:8443`), `build/ophidian-worker` (`:9090`) |
 | Source files | 282 `.go` files |
 | Domain tests | Covers `mission`, `policy`, `finding` |
 | Build status | `go build ./cmd/...` passes clean |
+
+## Current Task
+
+DeepSeek Cloud LLM configuration fix is complete. The AI subscriber now loads `.env`, reads `DEEPSEEK_API_KEY`, uses the OpenAI-compatible DeepSeek base URL `https://api.deepseek.com`, and relies on the OpenAI adapter to call `/v1/chat/completions` with `Authorization: Bearer <token>`. The invalid Ollama fallback URL containing `[redacted]` was removed from the worker path; if `DEEPSEEK_API_KEY` is absent, the AI subscriber disables itself with a clear warning instead of attempting Ollama. `configs/ophidian.yaml` and `configs/ai-plane.yaml` now declare DeepSeek as the default AI provider while keeping Ollama only as an explicit configured provider. `go build ./cmd/...` and `go test ./internal/domain/...` pass. No running `ophidian-worker` or `ophidian-server` process was found to restart; `build/ophidian-worker` was rebuilt successfully.
 
 ## Known Issues
 
@@ -134,6 +157,8 @@ Automated kill chain reporting, executive summaries, PoC generation, OPSEC clean
 3. **Pre-existing APPLICATION_PURITY warnings** — 4 use cases import `internal/interfaces/dto` (warnings only, archlint passes).
 4. **TUI freeze** — Bubble Tea input blocking. Tracked in Era 4 Phase 4.3.
 5. **UTCTime Scan interface** — Custom type works with pgx via `driver.Valuer` + custom `Scan`; not implementing standard `sql.Scanner`.
+6. **Full `go test ./...` may exceed local tool timeout** — targeted domain tests pass; scheduler/fuzz-style packages can run longer than the available execution window.
+7. **Worker restart required after AI subscriber changes** — start/restart `build/ophidian-worker` after pulling these changes to activate the DeepSeek Cloud configuration.
 
 ## Startup Order
 

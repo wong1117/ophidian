@@ -5,9 +5,18 @@ ai_plane:
   # You can configure multiple providers; the system will use the first available one.
   # Set FALLBACK: true to try the next provider if the current one fails.
   ai_providers:
-    default: "ollama"
+    default: "deepseek"
     fallback: true
     providers:
+      - type: "openai"
+        api_key: "${DEEPSEEK_API_KEY}"
+        model: "deepseek-chat"
+        base_url: "https://api.deepseek.com"
+        max_tokens: 4096
+        temperature: 0.3
+        timeout: 120
+        priority: 10
+
       - type: "ollama"
         model: "mixtral:8x7b"
         base_url: "http://localhost:11434"
