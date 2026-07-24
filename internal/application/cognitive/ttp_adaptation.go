@@ -3,13 +3,13 @@ package cognitive
 import (
 	"context"
 	"fmt"
-	"sort"
-	"github.com/ophidian/ophidian/internal/domain/common"
 	"github.com/ophidian/ophidian/internal/domain/attackplan"
+	"github.com/ophidian/ophidian/internal/domain/common"
+	"sort"
 )
 
 type TTPAdaptationEngine struct {
-	rag    *RAGMemory
+	rag     *RAGMemory
 	history []AdaptationEvent
 }
 

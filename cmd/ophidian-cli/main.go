@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/spf13/cobra"
 	"github.com/ophidian/ophidian/internal/cli"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -42,9 +42,10 @@ var versionCmd = &cobra.Command{
 var dashboardCmd = &cobra.Command{
 	Use:   "dashboard",
 	Short: "Launch interactive dashboard",
-	Long:  "Launch the Ophidian Control Center — a live TUI dashboard with metrics, logs, and workflows.",
+	Long:  "Launch the Ophidian Control Center — a live TUI dashboard with metrics, logs, AI recommendations, and approval controls.",
 	Run: func(cmd *cobra.Command, args []string) {
-		cli.RunDashboard()
+		serverURL, _ := cmd.Flags().GetString("server")
+		cli.RunDashboard(serverURL)
 	},
 }
 
@@ -128,6 +129,7 @@ var migrateCmd = &cobra.Command{
 func main() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(dashboardCmd)
+	dashboardCmd.Flags().StringP("server", "s", "http://localhost:8443", "Ophidian server URL")
 	rootCmd.AddCommand(workflowCmd)
 	rootCmd.AddCommand(eventsCmd)
 	rootCmd.AddCommand(metricsCmd)

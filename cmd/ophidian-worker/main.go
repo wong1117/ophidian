@@ -9,20 +9,28 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	appai "github.com/ophidian/ophidian/internal/application/ai"
+	"github.com/ophidian/ophidian/internal/application/cognitive"
+	"github.com/ophidian/ophidian/internal/application/executionplan"
 	"github.com/ophidian/ophidian/internal/domain/common"
+	"github.com/ophidian/ophidian/internal/domain/execution"
 	"github.com/ophidian/ophidian/internal/domain/mission"
 	infraai "github.com/ophidian/ophidian/internal/infrastructure/ai"
 	"github.com/ophidian/ophidian/internal/infrastructure/ai/providerfactory"
 	"github.com/ophidian/ophidian/internal/infrastructure/dispatcher"
 	"github.com/ophidian/ophidian/internal/infrastructure/persistence/postgres"
+	"github.com/ophidian/ophidian/internal/infrastructure/plugins"
 	"github.com/ophidian/ophidian/internal/infrastructure/queue"
 	"github.com/ophidian/ophidian/internal/infrastructure/runner"
+	pkgexploit "github.com/ophidian/ophidian/pkg/exploit"
 )
 
 func main() {
@@ -38,8 +46,21 @@ func main() {
 	mux := http.NewServeMux()
 
 	nmapRunner := runner.NewNmapRunner()
+	nucleiPlugin := runner.NewNucleiPlugin()
+	subfinderPlugin := runner.NewSubfinderPlugin()
+	httpxPlugin := runner.NewHttpxPlugin()
+	gobusterPlugin := runner.NewGobusterPlugin()
+	httpProbePlugin := runner.NewHTTPProbePlugin()
+	registry := plugins.NewToolRegistry()
+	registry.Register(nmapRunner)
+	registry.Register(nucleiPlugin)
+	registry.Register(subfinderPlugin)
+	registry.Register(httpxPlugin)
+	registry.Register(gobusterPlugin)
+	registry.Register(httpProbePlugin)
+
 	q := queue.NewPriorityQueue(nil, queue.WithQueueLogger(stdLogger{}))
-	worker := NewWorker(q, missionRepo, nmapRunner, eventStore)
+	worker := NewWorker(q, missionRepo, registry, eventStore)
 
 	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -110,12 +131,12 @@ func main() {
 type Worker struct {
 	q           *queue.PriorityQueue
 	missionRepo *postgres.MissionRepository
-	runner      runner.Runner
+	registry    *plugins.ToolRegistry
 	eventStore  *postgres.EventStore
 }
 
-func NewWorker(q *queue.PriorityQueue, repo *postgres.MissionRepository, r runner.Runner, es *postgres.EventStore) *Worker {
-	return &Worker{q: q, missionRepo: repo, runner: r, eventStore: es}
+func NewWorker(q *queue.PriorityQueue, repo *postgres.MissionRepository, registry *plugins.ToolRegistry, es *postgres.EventStore) *Worker {
+	return &Worker{q: q, missionRepo: repo, registry: registry, eventStore: es}
 }
 
 func (w *Worker) Run(ctx context.Context) {
@@ -155,6 +176,8 @@ func (w *Worker) processNext(ctx context.Context) {
 		w.handlePhaseTransitioned(job)
 	case "TaskDispatched":
 		w.handleTaskDispatched(job)
+	case "OperatorApproval":
+		w.handleOperatorApproval(job)
 	default:
 		log.Printf("WORKER: unknown event type: %s", job.Handler)
 	}
@@ -199,8 +222,36 @@ func (w *Worker) handleMissionStarted(job *queue.Job) {
 	log.Printf("WORKER: -> mission loaded: name=%q domains=%v ips=%v", m.Name, m.Target.Domains, m.Target.IPs)
 	log.Printf("WORKER: -> preparing reconnaissance for %d target(s): %v", len(targets), targets)
 
+	parallel := envOrInt("WORKER_PARALLELISM", runtime.NumCPU())
+	if parallel < 1 {
+		parallel = 1
+	}
+	ratePerSec := envOrInt("WORKER_RATE_PER_SEC", 2)
+	log.Printf("WORKER: -> scanning %d target(s) with parallelism=%d rate=%d/s", len(targets), parallel, ratePerSec)
+
+	rateLimiter := time.NewTicker(time.Second / time.Duration(ratePerSec))
+	defer rateLimiter.Stop()
+
+	sem := make(chan struct{}, parallel)
+	var wg sync.WaitGroup
 	for _, target := range targets {
-		w.runReconForTarget(common.ID(payload.MissionID), target)
+		wg.Add(1)
+		go func(t string) {
+			defer wg.Done()
+			<-rateLimiter.C
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			w.runReconForTarget(common.ID(payload.MissionID), t)
+		}(target)
+	}
+	wg.Wait()
+	log.Printf("WORKER: -> all %d target(s) completed for mission %s", len(targets), payload.MissionID)
+
+	if strings.ToLower(os.Getenv("WORKER_MODE")) == "adaptive" {
+		for _, target := range targets {
+			w.runAdaptiveLoop(payload.MissionID, target)
+		}
+		log.Printf("WORKER: -> adaptive loop completed for mission %s", payload.MissionID)
 	}
 }
 
@@ -208,59 +259,148 @@ func (w *Worker) runReconForTarget(missionID common.ID, target string) {
 	startedAt := common.Now()
 	log.Printf("WORKER: -> scanning: %s", target)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	rawOutput, scanErr := w.runner.Run(ctx, target)
-	completedAt := common.Now()
+	tools := w.registry.GetAll()
+	results := make([]execution.ToolResult, 0, len(tools))
 
-	var status common.TaskStatus
-	if scanErr != nil {
-		status = common.TaskFailed
-		log.Printf("WORKER: -> scan FAILED for %s: %v", target, scanErr)
-	} else {
-		status = common.TaskSuccess
-		log.Printf("WORKER: -> scan COMPLETE for %s (%d bytes)", target, len(rawOutput))
+	for _, tool := range tools {
+		toolName := tool.Name()
+		log.Printf("WORKER: -> running tool: %s on %s", toolName, target)
+
+		result, err := tool.Run(ctx, execution.ToolRequest{
+			MissionID: missionID.String(),
+			Target:    target,
+			Options: execution.ToolOptions{
+				Timeout: 0,
+			},
+			Metadata: map[string]string{
+				"source": "ophidian-worker",
+			},
+		})
+
+		if err != nil {
+			log.Printf("WORKER: -> tool %s FAILED for %s: %v", toolName, target, err)
+			results = append(results, execution.ToolResult{
+				Evidence: fmt.Sprintf("tool %s failed: %v", toolName, err),
+				Metadata: map[string]string{
+					"tool":   toolName,
+					"target": target,
+					"status": "failed",
+				},
+			})
+			continue
+		}
+
+		if result == nil {
+			log.Printf("WORKER: -> tool %s returned nil result for %s", toolName, target)
+			results = append(results, execution.ToolResult{
+				Evidence: fmt.Sprintf("tool %s returned no result", toolName),
+				Metadata: map[string]string{
+					"tool":   toolName,
+					"target": target,
+					"status": "empty",
+				},
+			})
+			continue
+		}
+
+		evidenceLen := len(result.Evidence)
+		log.Printf("WORKER: -> tool %s COMPLETE for %s (%d bytes)", toolName, target, evidenceLen)
+		results = append(results, *result)
 	}
 
-	event := mission.ReconCompletedEvent{
+	completedAt := common.Now()
+	totalEvidence := 0
+	for _, r := range results {
+		totalEvidence += len(r.Evidence)
+	}
+
+	var status common.TaskStatus
+	if totalEvidence > 0 {
+		status = common.TaskSuccess
+	} else {
+		status = common.TaskFailed
+	}
+
+	log.Printf("WORKER: ========================================")
+	log.Printf("WORKER: Multi-Tool Recon Complete")
+	log.Printf("WORKER:   mission_id:  %s", missionID)
+	log.Printf("WORKER:   target:      %s", target)
+	log.Printf("WORKER:   tools_run:   %d", len(results))
+	log.Printf("WORKER:   status:      %s", status)
+	log.Printf("WORKER:   total_bytes: %d", totalEvidence)
+	log.Printf("WORKER:   started:     %s", startedAt.Time.Format(time.RFC3339))
+	log.Printf("WORKER:   completed:   %s", completedAt.Time.Format(time.RFC3339))
+	for _, r := range results {
+		toolName := r.Metadata["tool"]
+		log.Printf("WORKER:   - tool=%s evidence=%d bytes", toolName, len(r.Evidence))
+	}
+	log.Printf("WORKER: ========================================")
+
+	legacyEvent := mission.ReconCompletedEvent{
 		MissionID:   missionID,
 		Target:      target,
-		RawOutput:   rawOutput,
+		RawOutput:   buildLegacyRawOutput(results),
 		Status:      status,
 		StartedAt:   startedAt,
 		CompletedAt: completedAt,
 	}
 
-	log.Printf("WORKER: \u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014")
-	log.Printf("WORKER: ReconCompletedEvent")
-	log.Printf("WORKER:   mission_id:  %s", event.MissionID)
-	log.Printf("WORKER:   target:      %s", event.Target)
-	log.Printf("WORKER:   status:      %s", event.Status)
-	log.Printf("WORKER:   output_len:  %d", len(event.RawOutput))
-	log.Printf("WORKER:   started:     %s", event.StartedAt.Time.Format(time.RFC3339))
-	log.Printf("WORKER:   completed:   %s", event.CompletedAt.Time.Format(time.RFC3339))
-	if event.RawOutput != "" {
-		log.Printf("WORKER:   output_preview: %.200s", event.RawOutput)
-	}
-	log.Printf("WORKER: ——————————————————")
-
 	if w.eventStore != nil {
-		payloadBytes, _ := json.Marshal(event)
+		payloadBytes, _ := json.Marshal(legacyEvent)
 		record := postgres.EventRecord{
-			ID:            event.EventID(),
-			AggregateID:   event.AggregateID(),
+			ID:            legacyEvent.EventID(),
+			AggregateID:   legacyEvent.AggregateID(),
 			AggregateType: "mission",
-			EventType:     event.EventType(),
+			EventType:     legacyEvent.EventType(),
 			Payload:       payloadBytes,
-			OccurredAt:    event.CompletedAt.Time,
+			OccurredAt:    legacyEvent.CompletedAt.Time,
 		}
 		if err := w.eventStore.Append(context.Background(), -1, record); err != nil {
-			log.Printf("WORKER: WARNING: failed to append event to store: %v", err)
+			log.Printf("WORKER: WARNING: failed to append legacy recon event to store: %v", err)
 		} else {
-			log.Printf("WORKER: Recon event appended to store for mission %s", event.MissionID)
+			log.Printf("WORKER: ReconCompletedEvent appended for mission %s", missionID)
+		}
+
+		multiEvent := execution.MultiToolReconCompletedEvent{
+			Result: execution.MultiToolReconResult{
+				MissionID:   missionID.String(),
+				Target:      target,
+				StartedAt:   startedAt,
+				CompletedAt: completedAt,
+				Duration:    completedAt.Sub(startedAt),
+				Results:     results,
+			},
+		}
+		multiPayload, _ := json.Marshal(multiEvent)
+		multiRecord := postgres.EventRecord{
+			ID:            multiEvent.EventID(),
+			AggregateID:   multiEvent.AggregateID(),
+			AggregateType: "mission",
+			EventType:     multiEvent.EventType(),
+			Payload:       multiPayload,
+			OccurredAt:    multiEvent.OccurredAt().Time,
+		}
+		if err := w.eventStore.Append(context.Background(), -1, multiRecord); err != nil {
+			log.Printf("WORKER: WARNING: failed to append multi-tool recon event to store: %v", err)
+		} else {
+			log.Printf("WORKER: MultiToolReconCompleted event appended for mission %s target %s", missionID, target)
 		}
 	}
+}
+
+func buildLegacyRawOutput(results []execution.ToolResult) string {
+	var sb strings.Builder
+	for _, r := range results {
+		toolName := r.Metadata["tool"]
+		if toolName == "" {
+			toolName = "unknown"
+		}
+		fmt.Fprintf(&sb, "=== %s ===\n%s\n\n", toolName, r.Evidence)
+	}
+	return strings.TrimSpace(sb.String())
 }
 
 func (w *Worker) handleStateChanged(job *queue.Job) {
@@ -276,6 +416,312 @@ func (w *Worker) handlePhaseTransitioned(job *queue.Job) {
 func (w *Worker) handleTaskDispatched(job *queue.Job) {
 	envelope, _ := job.Payload.(dispatcher.EventEnvelope)
 	log.Printf("WORKER: TaskDispatched: agg=%s payload=%s", envelope.AggregateID, string(envelope.Payload))
+}
+
+func (w *Worker) handleOperatorApproval(job *queue.Job) {
+	envelope, ok := job.Payload.(dispatcher.EventEnvelope)
+	if !ok {
+		log.Println("WORKER: OperatorApproval: invalid payload type")
+		return
+	}
+
+	var approval mission.OperatorApprovalEvent
+	if err := json.Unmarshal(envelope.Payload, &approval); err != nil {
+		log.Printf("WORKER: OperatorApproval: failed to unmarshal: %v", err)
+		return
+	}
+
+	log.Printf("WORKER: ========================================")
+	log.Printf("WORKER: OPERATOR APPROVAL RECEIVED")
+	log.Printf("WORKER:   mission_id:     %s", approval.MissionID)
+	log.Printf("WORKER:   source_event:   %s", approval.SourceEventID)
+	log.Printf("WORKER:   decision:       %s", approval.Decision)
+
+	if approval.Decision != common.PlanAccepted {
+		log.Printf("WORKER:   -> REJECTED: exploit execution denied")
+		log.Printf("WORKER: ========================================")
+		return
+	}
+
+	log.Printf("WORKER:   -> APPROVED: creating execution plan...")
+
+	planner := executionplan.NewPlanner(eventStoreAdapter{store: w.eventStore})
+	plan, err := planner.CreatePlan(context.Background(), approval)
+	if err != nil {
+		log.Printf("WORKER:   -> PLANNER ERROR: %v", err)
+		log.Printf("WORKER: ========================================")
+		return
+	}
+
+	log.Printf("WORKER:   -> plan: target=%s payload=%s tool=%s", plan.Target, plan.PayloadType, plan.ToolName)
+
+	planEvent := mission.ExploitExecutionPlannedEvent{
+		MissionID:       approval.MissionID,
+		ApprovalEventID: approval.EventID(),
+		Target:          plan.Target,
+		ToolName:        plan.ToolName,
+		Recommendation:  plan.Recommendation,
+		PlannedAt:       common.Now(),
+	}
+	w.appendDomainEvent(planEvent)
+
+	log.Printf("WORKER:   -> executing plan via %s plugin...", plan.ToolName)
+
+	result := w.executeExploitPlan(context.Background(), plan)
+
+	resultEvent := mission.ExploitResultEvent{
+		MissionID:   approval.MissionID,
+		PlanEventID: planEvent.EventID(),
+		Target:      plan.Target,
+		ToolName:    plan.ToolName,
+		Status:      result.Status,
+		Evidence:    result.Evidence,
+		StartedAt:   result.StartedAt,
+		CompletedAt: result.CompletedAt,
+	}
+	w.appendDomainEvent(resultEvent)
+
+	log.Printf("WORKER:   -> exploit result: status=%s evidence=%d bytes", resultEvent.Status, len(resultEvent.Evidence))
+	log.Printf("WORKER: ========================================")
+}
+
+type exploitResult struct {
+	Status      common.TaskStatus
+	Evidence    string
+	StartedAt   common.UTCTime
+	CompletedAt common.UTCTime
+}
+
+func (w *Worker) executeExploitPlan(ctx context.Context, plan *executionplan.ExecutionPlan) exploitResult {
+	startedAt := common.Now()
+
+	if plan.PayloadType != "" {
+		return w.generatePayload(startedAt, plan)
+	}
+
+	tools := w.registry.GetAll()
+	var tool execution.ExternalTool
+	for _, t := range tools {
+		if t.Name() == plan.ToolName {
+			tool = t
+			break
+		}
+	}
+
+	if tool == nil {
+		return exploitResult{
+			Status:      common.TaskFailed,
+			Evidence:    fmt.Sprintf("tool %s not found in registry", plan.ToolName),
+			StartedAt:   startedAt,
+			CompletedAt: common.Now(),
+		}
+	}
+
+	exploitReq := execution.ToolRequest{
+		MissionID: plan.MissionID,
+		Target:    plan.Target,
+		Options: execution.ToolOptions{
+			Timeout: 5 * time.Minute,
+		},
+		Metadata: map[string]string{
+			"source":         "exploit-planner",
+			"recommendation": plan.Recommendation,
+		},
+	}
+
+	result, err := tool.Run(ctx, exploitReq)
+	completedAt := common.Now()
+
+	if err != nil {
+		return exploitResult{
+			Status:      common.TaskFailed,
+			Evidence:    fmt.Sprintf("exploit failed: %v", err),
+			StartedAt:   startedAt,
+			CompletedAt: completedAt,
+		}
+	}
+
+	evidence := ""
+	if result != nil {
+		evidence = result.Evidence
+	}
+
+	return exploitResult{
+		Status:      common.TaskSuccess,
+		Evidence:    evidence,
+		StartedAt:   startedAt,
+		CompletedAt: completedAt,
+	}
+}
+
+func (w *Worker) generatePayload(startedAt common.UTCTime, plan *executionplan.ExecutionPlan) exploitResult {
+	engine := pkgexploit.NewPayloadEngine()
+	payloadType := pkgexploit.PayloadType(plan.PayloadType)
+
+	lhost := envOr("LHOST", "")
+	lport := envOr("LPORT", "4444")
+	if lhost == "" {
+		lhost = "127.0.0.1"
+	}
+
+	payload, err := engine.Generate(payloadType, map[string]string{
+		"LHOST": lhost,
+		"LPORT": lport,
+	})
+	if err != nil {
+		return exploitResult{
+			Status:      common.TaskFailed,
+			Evidence:    fmt.Sprintf("payload generation failed: %v", err),
+			StartedAt:   startedAt,
+			CompletedAt: common.Now(),
+		}
+	}
+
+	log.Printf("WORKER:   -> payload generated: type=%s name=%s lang=%s platform=%s",
+		payload.Type, payload.Name, payload.Language, payload.Platform)
+
+	var evidenceBuilder strings.Builder
+	fmt.Fprintf(&evidenceBuilder, "[PAYLOAD] %s (%s/%s)\nDescription: %s\n\n--- ORIGINAL ---\n%s",
+		payload.Name, payload.Language, payload.Platform,
+		payload.Description, payload.Code)
+
+	obfuscator := pkgexploit.NewObfuscator()
+	variants := obfuscator.ObfuscateAll(payload.Code)
+	if len(variants) > 0 {
+		fmt.Fprintf(&evidenceBuilder, "\n\n--- OBFUSCATED VARIANTS (%d) ---", len(variants))
+		for _, v := range variants {
+			fmt.Fprintf(&evidenceBuilder, "\n[%s]\n%s", v.Technique, v.Code)
+		}
+		log.Printf("WORKER:   -> %d obfuscated variants generated", len(variants))
+	}
+
+	plan.PayloadCode = payload.Code
+
+	return exploitResult{
+		Status:      common.TaskSuccess,
+		Evidence:    evidenceBuilder.String(),
+		StartedAt:   startedAt,
+		CompletedAt: common.Now(),
+	}
+}
+
+func (w *Worker) appendDomainEvent(event interface{}) {
+	if w.eventStore == nil {
+		return
+	}
+
+	domainEvent, ok := event.(interface {
+		EventID() string
+		EventType() string
+		OccurredAt() common.UTCTime
+		AggregateID() string
+	})
+	if !ok {
+		return
+	}
+
+	payloadBytes, _ := json.Marshal(event)
+	record := postgres.EventRecord{
+		ID:            domainEvent.EventID(),
+		AggregateID:   domainEvent.AggregateID(),
+		AggregateType: "mission",
+		EventType:     domainEvent.EventType(),
+		Payload:       payloadBytes,
+		OccurredAt:    domainEvent.OccurredAt().Time,
+	}
+	if err := w.eventStore.Append(context.Background(), -1, record); err != nil {
+		log.Printf("WORKER: WARNING: failed to append %s event: %v", domainEvent.EventType(), err)
+	} else {
+		log.Printf("WORKER: %s event appended for mission %s", domainEvent.EventType(), domainEvent.AggregateID())
+	}
+}
+
+func (w *Worker) runAdaptiveLoop(missionID string, target string) {
+	log.Printf("WORKER: ========================================")
+	log.Printf("WORKER: ADAPTIVE ATTACK LOOP STARTING")
+	log.Printf("WORKER:   mission: %s  target: %s", missionID, target)
+	log.Printf("WORKER: ========================================")
+
+	cfg := aiProviderConfigFromEnvForAdaptive()
+	provider, err := providerfactory.NewProviderFromConfig(cfg)
+	if err != nil {
+		log.Printf("WORKER: ADAPTIVE: provider setup failed: %v", err)
+		return
+	}
+
+	llmAdapter := providerfactory.NewLLMClientAdapter(provider)
+
+	config := cognitive.AdaptiveLoopConfig{
+		MaxIterations: 20,
+		LLMTimeout:    60 * time.Second,
+		Logger:        log.Default(),
+	}
+
+	loop := cognitive.NewAdaptiveLoop(config, llmAdapter, eventAppender{store: w.eventStore})
+
+	recon := cognitive.ReconSummary{
+		TechStack: []string{},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	result, err := loop.Run(ctx, target, &recon)
+	if err != nil {
+		log.Printf("WORKER: ADAPTIVE: loop error: %v", err)
+		return
+	}
+
+	log.Printf("WORKER: ========================================")
+	log.Printf("WORKER: ADAPTIVE ATTACK LOOP COMPLETE")
+	log.Printf("WORKER:   attempts: %d  successes: %d", result.TotalAttempts, result.SuccessCount)
+	log.Printf("WORKER:   reason: %s", result.StopReason)
+	log.Printf("WORKER: ========================================")
+}
+
+func aiProviderConfigFromEnvForAdaptive() infraai.ProviderConfig {
+	if key := os.Getenv("DEEPSEEK_API_KEY"); key != "" {
+		return infraai.ProviderConfig{
+			Type:      infraai.ProviderOpenAI,
+			APIKey:    key,
+			Model:     envOr("DEEPSEEK_MODEL", "deepseek-chat"),
+			BaseURL:   envOr("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+			Timeout:   120,
+			MaxTokens: 2048,
+		}
+	}
+	return infraai.ProviderConfig{
+		Type:    infraai.ProviderOllama,
+		Model:   envOr("AI_MODEL", "deepseek-r1:7b"),
+		BaseURL: envOr("OLLAMA_BASE_URL", "http://localhost:11434"),
+	}
+}
+
+type eventAppender struct {
+	store *postgres.EventStore
+}
+
+func (a eventAppender) Append(ctx context.Context, event interface{}) error {
+	domainEvent, ok := event.(interface {
+		EventID() string
+		EventType() string
+		OccurredAt() common.UTCTime
+		AggregateID() string
+	})
+	if !ok {
+		return fmt.Errorf("event does not implement domain event contract")
+	}
+
+	payloadBytes, _ := json.Marshal(event)
+	record := postgres.EventRecord{
+		ID:            domainEvent.EventID(),
+		AggregateID:   domainEvent.AggregateID(),
+		AggregateType: "mission",
+		EventType:     domainEvent.EventType(),
+		Payload:       payloadBytes,
+		OccurredAt:    domainEvent.OccurredAt().Time,
+	}
+	return a.store.Append(ctx, -1, record)
 }
 
 func connectDB() *pgxpool.Pool {
@@ -298,6 +744,16 @@ func connectDB() *pgxpool.Pool {
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return def
+}
+
+func envOrInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		n, err := strconv.Atoi(v)
+		if err == nil && n > 0 {
+			return n
+		}
 	}
 	return def
 }
@@ -365,6 +821,27 @@ func loadDotEnv(path string) {
 
 type eventStreamAdapter struct {
 	store *postgres.EventStore
+}
+
+type eventStoreAdapter struct {
+	store *postgres.EventStore
+}
+
+func (a eventStoreAdapter) LoadAllEvents(ctx context.Context, from, to time.Time) ([]executionplan.StoredEvent, error) {
+	records, err := a.store.LoadAllEvents(ctx, from, to)
+	if err != nil {
+		return nil, err
+	}
+	events := make([]executionplan.StoredEvent, len(records))
+	for i, r := range records {
+		events[i] = executionplan.StoredEvent{
+			ID:          r.ID,
+			AggregateID: r.AggregateID,
+			EventType:   r.EventType,
+			Payload:     r.Payload,
+		}
+	}
+	return events, nil
 }
 
 func (a eventStreamAdapter) LoadEventsSince(ctx context.Context, since time.Time) ([]appai.StoredEvent, error) {

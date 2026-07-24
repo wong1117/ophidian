@@ -2,20 +2,27 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/ophidian/ophidian/internal/application/aiplane"
 	"github.com/ophidian/ophidian/internal/application/executionplane/exploit"
 	reportApp "github.com/ophidian/ophidian/internal/application/executionplane/report"
 	"github.com/ophidian/ophidian/internal/domain/attackplan"
+	"github.com/ophidian/ophidian/internal/domain/common"
+	"github.com/ophidian/ophidian/internal/domain/mission"
 	"github.com/ophidian/ophidian/internal/domain/session"
 	"github.com/ophidian/ophidian/internal/domain/target"
+	"github.com/ophidian/ophidian/internal/infrastructure/dispatcher"
+	"github.com/ophidian/ophidian/internal/infrastructure/persistence/postgres"
 	"github.com/ophidian/ophidian/internal/interfaces/dto"
 )
 
 type ReconHandler struct {
-	targetRepo  target.TargetRepository
+	targetRepo target.TargetRepository
 }
 
 func NewReconHandler(targetRepo target.TargetRepository) *ReconHandler {
@@ -75,8 +82,8 @@ func domainsToStrings(domains []target.Domain) []string {
 }
 
 type ExploitHandler struct {
-	matchUC   *exploit.MatchExploitUseCase
-	executeUC *exploit.ExecuteExploitUseCase
+	matchUC     *exploit.MatchExploitUseCase
+	executeUC   *exploit.ExecuteExploitUseCase
 	sessionRepo session.SessionRepository
 }
 
@@ -139,7 +146,7 @@ func (h *ExploitHandler) ListSessions(c echo.Context) error {
 }
 
 type AIHandler struct {
-	planUC *aiplane.GeneratePlanUseCase
+	planUC   *aiplane.GeneratePlanUseCase
 	planRepo attackplan.AttackPlanRepository
 }
 
@@ -202,5 +209,99 @@ func (h *ReportHandler) Export(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{
 		"format": format,
 		"status": "exported",
+	})
+}
+
+type RecommendationHandler struct {
+	eventStore *postgres.EventStore
+	dispatcher *dispatcher.HTTPEventDispatcher
+}
+
+func NewRecommendationHandler(eventStore *postgres.EventStore, dispatcher *dispatcher.HTTPEventDispatcher) *RecommendationHandler {
+	return &RecommendationHandler{eventStore: eventStore, dispatcher: dispatcher}
+}
+
+func (h *RecommendationHandler) List(c echo.Context) error {
+	ctx := context.Background()
+	from := time.Now().UTC().Add(-24 * time.Hour)
+	to := time.Now().UTC()
+
+	records, err := h.eventStore.LoadAllEvents(ctx, from, to)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to load events: %v", err))
+	}
+
+	var recs []dto.RecommendationDTO
+	for _, r := range records {
+		if r.EventType != "AIRecommendationGenerated" {
+			continue
+		}
+		var rec mission.AIRecommendationEvent
+		if err := json.Unmarshal(r.Payload, &rec); err != nil {
+			continue
+		}
+		recs = append(recs, dto.RecommendationDTO{
+			EventID:        r.ID,
+			MissionID:      rec.MissionID.String(),
+			SourceEventID:  rec.SourceEventID,
+			Recommendation: rec.Recommendation,
+			Confidence:     rec.Confidence,
+			GeneratedAt:    rec.GeneratedAt.Time,
+		})
+	}
+
+	if recs == nil {
+		recs = []dto.RecommendationDTO{}
+	}
+	return c.JSON(http.StatusOK, recs)
+}
+
+func (h *RecommendationHandler) Approve(c echo.Context) error {
+	var req dto.ApprovalRequestDTO
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	if req.MissionID == "" || req.SourceEventID == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "mission_id and source_event_id are required")
+	}
+
+	decision := common.PlanDecision(req.Decision)
+	if decision != common.PlanAccepted && decision != common.PlanRejected && decision != common.PlanModified {
+		return echo.NewHTTPError(http.StatusBadRequest, "decision must be ACCEPTED, REJECTED, or MODIFIED")
+	}
+
+	approval := mission.OperatorApprovalEvent{
+		MissionID:     common.ID(req.MissionID),
+		SourceEventID: req.SourceEventID,
+		Decision:      decision,
+		OperatorNote:  req.OperatorNote,
+		ApprovedAt:    common.Now(),
+	}
+
+	payloadBytes, _ := json.Marshal(approval)
+	record := postgres.EventRecord{
+		ID:            approval.EventID(),
+		AggregateID:   approval.AggregateID(),
+		AggregateType: "mission",
+		EventType:     approval.EventType(),
+		Payload:       payloadBytes,
+		OccurredAt:    approval.ApprovedAt.Time,
+	}
+
+	ctx := context.Background()
+	if err := h.eventStore.Append(ctx, -1, record); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to append approval event: %v", err))
+	}
+
+	if h.dispatcher != nil {
+		if err := h.dispatcher.Dispatch(ctx, approval); err != nil {
+			fmt.Printf("SERVER: WARNING: failed to dispatch approval to worker: %v\n", err)
+		}
+	}
+
+	return c.JSON(http.StatusOK, dto.ApprovalResponseDTO{
+		Status:  "appended",
+		EventID: approval.EventID(),
 	})
 }

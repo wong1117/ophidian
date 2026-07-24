@@ -3,9 +3,9 @@ package cognitive
 import (
 	"context"
 	"fmt"
-	"math"
-	"github.com/ophidian/ophidian/internal/domain/common"
 	"github.com/ophidian/ophidian/internal/domain/attackplan"
+	"github.com/ophidian/ophidian/internal/domain/common"
+	"math"
 )
 
 var riskFloatMap = map[common.RiskLevel]float64{
@@ -16,15 +16,15 @@ var riskFloatMap = map[common.RiskLevel]float64{
 }
 
 type ReviewResult struct {
-	PlanID        string
-	Passed        bool
-	RiskScore     float64
-	FailChance    float64
-	Weaknesses    []string
-	Risks         []RiskItem
-	Alternatives  []AlternativeStrategy
-	StealthScore  float64
-	FinalScore    float64
+	PlanID         string
+	Passed         bool
+	RiskScore      float64
+	FailChance     float64
+	Weaknesses     []string
+	Risks          []RiskItem
+	Alternatives   []AlternativeStrategy
+	StealthScore   float64
+	FinalScore     float64
 	Recommendation string
 }
 

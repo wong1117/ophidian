@@ -10,10 +10,13 @@ import (
 	"time"
 
 	"github.com/ophidian/ophidian/internal/domain/common"
+	"github.com/ophidian/ophidian/internal/domain/execution"
 	"github.com/ophidian/ophidian/internal/domain/mission"
 )
 
-const reconCompletedEventType = "ReconCompleted"
+const (
+	multiToolReconCompletedEventType = "MultiToolReconCompleted"
+)
 
 type StoredEvent struct {
 	ID          string
@@ -87,16 +90,17 @@ func (s *EventSubscriber) pollOnce(ctx context.Context, lastSeen time.Time, proc
 		if event.OccurredAt.After(newLastSeen) {
 			newLastSeen = event.OccurredAt
 		}
-		if event.EventType != reconCompletedEventType {
+		if !isSupportedReconEvent(event.EventType) {
 			continue
 		}
 		if _, ok := processed[event.ID]; ok {
 			continue
 		}
 		processed[event.ID] = struct{}{}
-		s.logger.Printf("AI-SUBSCRIBER: ReconCompleted detected: id=%s aggregate=%s", event.ID, event.AggregateID)
-		if err := s.handleReconCompleted(ctx, event); err != nil {
-			s.logger.Printf("AI SUBSCRIBER ERROR: recon event %s failed: %v", event.ID, err)
+
+		s.logger.Printf("AI-SUBSCRIBER: %s detected: id=%s aggregate=%s", event.EventType, event.ID, event.AggregateID)
+		if err := s.handleMultiToolReconCompleted(ctx, event); err != nil {
+			s.logger.Printf("AI SUBSCRIBER ERROR: %s event %s failed: %v", event.EventType, event.ID, err)
 		}
 	}
 
@@ -106,17 +110,31 @@ func (s *EventSubscriber) pollOnce(ctx context.Context, lastSeen time.Time, proc
 	return newLastSeen
 }
 
-func (s *EventSubscriber) handleReconCompleted(ctx context.Context, event StoredEvent) error {
-	var recon mission.ReconCompletedEvent
+func isSupportedReconEvent(eventType string) bool {
+	return eventType == multiToolReconCompletedEventType
+}
+
+func (s *EventSubscriber) handleMultiToolReconCompleted(ctx context.Context, event StoredEvent) error {
+	var recon execution.MultiToolReconCompletedEvent
 	if err := decodeStoredPayload(event.Payload, &recon); err != nil {
-		return fmt.Errorf("unmarshal recon payload: %w", err)
+		return fmt.Errorf("unmarshal multi-tool recon payload: %w", err)
 	}
-	if strings.TrimSpace(recon.RawOutput) == "" {
-		return fmt.Errorf("nmap output is empty")
+	if strings.TrimSpace(recon.Result.MissionID) == "" {
+		return fmt.Errorf("mission id is empty")
+	}
+	if strings.TrimSpace(recon.Result.Target) == "" {
+		return fmt.Errorf("target is empty")
+	}
+	if len(recon.Result.Results) == 0 {
+		return fmt.Errorf("multi-tool recon results are empty")
 	}
 
-	prompt := fmt.Sprintf("Berikan 3 saran eksploitasi berdasarkan hasil Nmap ini:\n\n%s", recon.RawOutput)
-	s.logger.Printf("AI-SUBSCRIBER: calling LLM for mission=%s target=%s output_len=%d", recon.MissionID, recon.Target, len(recon.RawOutput))
+	prompt, evidenceLen := buildMultiToolReconPrompt(recon.Result)
+	if strings.TrimSpace(prompt) == "" {
+		return fmt.Errorf("multi-tool evidence is empty")
+	}
+
+	s.logger.Printf("AI-SUBSCRIBER: calling LLM for mission=%s target=%s tool_results=%d evidence_len=%d", recon.Result.MissionID, recon.Result.Target, len(recon.Result.Results), evidenceLen)
 	answer, err := s.llm.Generate(ctx, prompt)
 	if err != nil {
 		return fmt.Errorf("failed to call LLM: %w", err)
@@ -127,18 +145,60 @@ func (s *EventSubscriber) handleReconCompleted(ctx context.Context, event Stored
 	}
 
 	recommendation := mission.AIRecommendationEvent{
-		MissionID:      recon.MissionID,
+		MissionID:      common.ID(recon.Result.MissionID),
 		SourceEventID:  event.ID,
 		Recommendation: answer,
-		Confidence:     0.5,
+		Confidence:     0,
 		GeneratedAt:    common.Now(),
 	}
 	if err := s.events.Append(ctx, recommendation); err != nil {
 		return fmt.Errorf("append AI recommendation: %w", err)
 	}
 
-	s.logger.Printf("AI-SUBSCRIBER: AIRecommendationGenerated appended: mission=%s source=%s", recon.MissionID, event.ID)
+	s.logger.Printf("AI-SUBSCRIBER: AIRecommendationGenerated appended: mission=%s source=%s", recon.Result.MissionID, event.ID)
 	return nil
+}
+
+func buildMultiToolReconPrompt(result execution.MultiToolReconResult) (string, int) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Saya memiliki hasil scanning multi-tool untuk target %s:\n\n", result.Target)
+
+	totalEvidenceLen := 0
+	for i, toolResult := range result.Results {
+		evidence := strings.TrimSpace(toolResult.Evidence)
+		if evidence == "" && len(toolResult.Artifacts) == 0 {
+			continue
+		}
+
+		totalEvidenceLen += len(evidence)
+		fmt.Fprintf(&b, "- Tool %s: %s\n", toolName(toolResult, i), evidence)
+
+		for _, artifact := range toolResult.Artifacts {
+			fmt.Fprintf(&b, "    [artifact] %s (%s): ", artifact.Name, artifact.Type)
+			var pairs []string
+			for key, value := range artifact.Metadata {
+				if value != "" && len(value) < 512 {
+					pairs = append(pairs, fmt.Sprintf("%s=%s", key, value))
+				}
+			}
+			fmt.Fprintf(&b, "%s\n", strings.Join(pairs, ", "))
+		}
+	}
+
+	if totalEvidenceLen == 0 {
+		return "", 0
+	}
+	fmt.Fprintf(&b, "\nBerikan 3 rekomendasi eksploitasi berdasarkan data gabungan di atas. Analisis kerentanan berdasarkan versi software, port yang terbuka, teknologi yang terdeteksi, header keamanan yang hilang, dan subdomain yang ditemukan.")
+	return b.String(), totalEvidenceLen
+}
+
+func toolName(result execution.ToolResult, index int) string {
+	for _, key := range []string{"tool", "tool_name", "name"} {
+		if value := strings.TrimSpace(result.Metadata[key]); value != "" {
+			return value
+		}
+	}
+	return fmt.Sprintf("#%d", index+1)
 }
 
 func decodeStoredPayload(payload json.RawMessage, dst interface{}) error {

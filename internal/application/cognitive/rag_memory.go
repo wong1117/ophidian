@@ -2,8 +2,8 @@ package cognitive
 
 import (
 	"context"
-	"time"
 	"github.com/ophidian/ophidian/internal/domain/common"
+	"time"
 )
 
 type RAGStore interface {
@@ -32,17 +32,17 @@ func NewRAGMemory(store RAGStore, embedder common.Embedder) *RAGMemory {
 
 func (m *RAGMemory) RecordMissionSuccess(ctx context.Context, missionID, technique, targetOS, targetEnv string, tags []string) error {
 	entry := &common.MemoryEntry{
-		ID:        common.NewID(),
-		Type:      common.MemoryMissionSuccess,
-		Content:   "Mission successful using technique: " + technique,
-		Tags:      tags,
-		MissionID: missionID,
-		TargetOS:  targetOS,
-		TargetEnv: targetEnv,
-		Technique: technique,
-		Success:   true,
+		ID:         common.NewID(),
+		Type:       common.MemoryMissionSuccess,
+		Content:    "Mission successful using technique: " + technique,
+		Tags:       tags,
+		MissionID:  missionID,
+		TargetOS:   targetOS,
+		TargetEnv:  targetEnv,
+		Technique:  technique,
+		Success:    true,
 		Confidence: 1.0,
-		CreatedAt: time.Now(),
+		CreatedAt:  time.Now(),
 	}
 	embedding, err := m.embedder.Embed(ctx, entry.Content)
 	if err != nil {
@@ -56,17 +56,17 @@ func (m *RAGMemory) RecordMissionSuccess(ctx context.Context, missionID, techniq
 
 func (m *RAGMemory) RecordTechniqueFailure(ctx context.Context, missionID, technique, targetOS, targetEnv, reason string, tags []string) error {
 	entry := &common.MemoryEntry{
-		ID:        common.NewID(),
-		Type:      common.MemoryTechniqueFail,
-		Content:   "Technique failed: " + technique + " reason: " + reason,
-		Tags:      tags,
-		MissionID: missionID,
-		TargetOS:  targetOS,
-		TargetEnv: targetEnv,
-		Technique: technique,
-		Success:   false,
+		ID:         common.NewID(),
+		Type:       common.MemoryTechniqueFail,
+		Content:    "Technique failed: " + technique + " reason: " + reason,
+		Tags:       tags,
+		MissionID:  missionID,
+		TargetOS:   targetOS,
+		TargetEnv:  targetEnv,
+		Technique:  technique,
+		Success:    false,
 		Confidence: 0.0,
-		CreatedAt: time.Now(),
+		CreatedAt:  time.Now(),
 	}
 	embedding, err := m.embedder.Embed(ctx, entry.Content)
 	if err != nil {

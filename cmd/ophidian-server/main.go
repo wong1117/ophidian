@@ -41,13 +41,16 @@ func main() {
 
 	planUC := aiplane.NewGeneratePlanUseCase(nil, nil, missionRepo, nil, nil, wrapEventStore(eventStore))
 
+	recHandler := handlers.NewRecommendationHandler(eventStore, eventDispatcher)
+
 	server := web.NewServer(web.ServerDeps{
-		HealthHandler:  handlers.NewHealthHandler(),
-		MissionHandler: handlers.NewMissionHandler(createUC, orchestrateUC, missionRepo),
-		ReconHandler:   handlers.NewReconHandler(nil),
-		ExploitHandler: handlers.NewExploitHandler(nil, nil, nil),
-		AIHandler:      handlers.NewAIHandler(planUC, nil),
-		ReportHandler:  handlers.NewReportHandler(nil),
+		HealthHandler:         handlers.NewHealthHandler(),
+		MissionHandler:        handlers.NewMissionHandler(createUC, orchestrateUC, missionRepo),
+		ReconHandler:          handlers.NewReconHandler(nil),
+		ExploitHandler:        handlers.NewExploitHandler(nil, nil, nil),
+		AIHandler:             handlers.NewAIHandler(planUC, nil),
+		ReportHandler:         handlers.NewReportHandler(nil),
+		RecommendationHandler: recHandler,
 	})
 
 	registerPprof(server.Echo)

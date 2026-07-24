@@ -8,13 +8,14 @@ import (
 )
 
 type ServerDeps struct {
-	MissionHandler *handlers.MissionHandler
-	ReconHandler   *handlers.ReconHandler
-	ExploitHandler *handlers.ExploitHandler
-	AIHandler      *handlers.AIHandler
-	ReportHandler  *handlers.ReportHandler
-	HealthHandler  *handlers.HealthHandler
-	Metrics        middleware.MetricsCollector
+	MissionHandler        *handlers.MissionHandler
+	ReconHandler          *handlers.ReconHandler
+	ExploitHandler        *handlers.ExploitHandler
+	AIHandler             *handlers.AIHandler
+	ReportHandler         *handlers.ReportHandler
+	HealthHandler         *handlers.HealthHandler
+	RecommendationHandler *handlers.RecommendationHandler
+	Metrics               middleware.MetricsCollector
 }
 
 type Server struct {
@@ -85,6 +86,12 @@ func (s *Server) registerRoutes() {
 		rp := api.Group("/report")
 		rp.POST("/generate", s.deps.ReportHandler.Generate)
 		rp.GET("/export/:format", s.deps.ReportHandler.Export)
+	}
+
+	if s.deps.RecommendationHandler != nil {
+		rec := api.Group("/recommendations")
+		rec.GET("", s.deps.RecommendationHandler.List)
+		rec.POST("/:id/approve", s.deps.RecommendationHandler.Approve)
 	}
 }
 
